@@ -7,26 +7,39 @@
 void setup() {
     Serial.begin(115200);
     Serial.println("[1] Serial OK");
+
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
+
+    // SP1 — efectos de gol (G26 TX, G27 RX)
     audioInit();
-    Serial.println("[2] Audio init OK");
+    Serial.println("[2] SP1 Audio OK");
+
+    // SP2 — sonido ambiente (G16 TX, G17 RX) — descomentá cuando conectes
+    // audioAmbienteInit();
+    // audioAmbienteLoop();
+    // Serial.println("[3] SP2 Ambiente OK");
 }
 
 void loop() {
     audioPoll();
+    // audioAmbientePoll();
 
     static bool prev1 = HIGH, prev2 = HIGH;
+    static unsigned long ultimoGol = 0;
     bool cur1 = digitalRead(PIN_SENSOR1);
     bool cur2 = digitalRead(PIN_SENSOR2);
 
-    if (cur1 == LOW && prev1 == HIGH) {
-        Serial.println("[SENSOR 1] Gol detectado!");
-        reproducir(Pista::GOL);
-    }
-    if (cur2 == LOW && prev2 == HIGH) {
-        Serial.println("[SENSOR 2] Gol detectado!");
-        reproducir(Pista::GOL);
+    if (millis() - ultimoGol >= 2000) {
+        if (cur1 == LOW && prev1 == HIGH) {
+            ultimoGol = millis();
+            Serial.println("[SENSOR 1] Gol!");
+            reproducir(Pista::GOL);  // 0001.mp3
+        } else if (cur2 == LOW && prev2 == HIGH) {
+            ultimoGol = millis();
+            Serial.println("[SENSOR 2] Gol!");
+            reproducir(Pista::GOL2);  // 0002.mp3
+        }
     }
 
     prev1 = cur1;
