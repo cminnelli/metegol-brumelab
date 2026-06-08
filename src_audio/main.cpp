@@ -11,19 +11,16 @@ void setup() {
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
 
-    // SP1 — efectos de gol (G26 TX, G27 RX)
-    audioInit();
-    Serial.println("[2] SP1 Audio OK");
-
-    // SP2 — sonido ambiente (G16 TX, G17 RX) — descomentá cuando conectes
-    // audioAmbienteInit();
-    // audioAmbienteLoop();
-    // Serial.println("[3] SP2 Ambiente OK");
+    // Inicia SP1 (G26/G27) + SP2 (G16/G17) con boot wait compartido
+    audioAmbienteBegin();  // Serial1
+    audioInit();           // Serial2
+    audioInitAll();        // wait 2s escuchando ambos, luego configura los dos
+    Serial.println("[2] SP1+SP2 listos");
 }
 
 void loop() {
     audioPoll();
-    // audioAmbientePoll();
+    audioAmbientePoll();
 
     static bool prev1 = HIGH, prev2 = HIGH;
     static unsigned long ultimoGol = 0;

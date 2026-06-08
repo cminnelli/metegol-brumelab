@@ -6,6 +6,7 @@
 enum class Pista { GOL = 1, GOL2 = 2 };
 
 void audioInit();
+void audioInitAll();   // inicializa SP1 + SP2 con boot wait compartido
 void reproducir(Pista pista);
 void audioStop();
 void audioPoll();
@@ -13,6 +14,7 @@ void audioPoll();
 // ── Speaker 2 — sonido ambiente (a instalar) ─────────────────────────────────
 // DFPlayer 2: ESP32 G16 (TX→RX módulo) / G17 (RX←TX módulo)
 // Pista: 0001.mp3 = música ambiente en loop
+void audioAmbienteBegin();
 void audioAmbienteInit();
 void audioAmbienteLoop();   // inicia loop de la pista ambiente
 void audioAmbientePoll();
