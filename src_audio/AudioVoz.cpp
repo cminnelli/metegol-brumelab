@@ -11,8 +11,6 @@ static void cmd(uint8_t c, uint8_t ph, uint8_t pl) {
     buf[4]=0x00; buf[5]=ph;   buf[6]=pl;
     int16_t cs = -(int16_t)(buf[1]+buf[2]+buf[3]+buf[4]+buf[5]+buf[6]);
     buf[7]=(cs>>8)&0xFF; buf[8]=cs&0xFF; buf[9]=0xEF;
-    Serial.printf("[SP1 TX] %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
-        buf[0],buf[1],buf[2],buf[3],buf[4],buf[5],buf[6],buf[7],buf[8],buf[9]);
     Serial2.write(buf, 10);
     delay(150);
 }
@@ -24,6 +22,11 @@ void vozBegin() {
 void vozPlay(Pista pista) {
     Serial.printf("[SP1] ▶ Pista %d\n", (int)pista);
     cmd(0x03, 0x00, (uint8_t)pista);
+}
+
+void vozSetVolumen(uint8_t vol) {
+    Serial.printf("[SP1] Volumen → %d\n", vol);
+    cmd(0x06, 0x00, vol);
 }
 
 void vozPoll() {

@@ -2,6 +2,7 @@
 #include "AudioVoz.h"
 #include "AudioAmbiente.h"
 #include "Partido.h"
+#include "WebConfig.h"
 #include "config.h"
 
 #define PIN_SENSOR1 34
@@ -24,7 +25,11 @@ static void registrarGol(uint8_t equipo) {
     partido.getResultado(buf, sizeof(buf));
     Serial.printf("[JUEGO] Marcador: %s\n", buf);
 
-    if (partido.termino()) {
+    bool terminado = (config.modoJuego == 0)
+        ? (partido.goles[0] >= config.golesMax || partido.goles[1] >= config.golesMax)
+        : ((millis() - partido.inicio) >= (uint32_t)config.duracionMin * 60000UL);
+
+    if (terminado) {
         int8_t w = partido.ganador();
         if (w == 0)      Serial.println("[JUEGO] ¡Ganó equipo 1!");
         else if (w == 1) Serial.println("[JUEGO] ¡Ganó equipo 2!");
@@ -38,10 +43,24 @@ void setup() {
     Serial.begin(115200);
     Serial.println("[1] Serial OK");
 
+    webConfigInit();  // carga config desde NVS + inicia AP WiFi
+
+    Serial.println("=== CONFIG CARGADA ===");
+    Serial.printf("  Volumen (voz)     : %d\n", config.volumenVoz);
+    Serial.printf("  Volumen (ambiente): %d\n", config.volumenAmbiente);
+    Serial.printf("  Modo de juego     : %s\n", config.modoJuego == 0 ? "goles" : "tiempo");
+    if (config.modoJuego == 0)
+        Serial.printf("  Goles para ganar  : %d\n", config.golesMax);
+    else
+        Serial.printf("  Duracion          : %d min\n", config.duracionMin);
+    Serial.printf("  Brillo display    : %d\n", config.brillo);
+    Serial.printf("  Vel. scroll       : %d ms\n", config.velocidadScroll);
+    Serial.printf("  Pista ambiente    : %d\n", config.pistaAmbiente);
+    Serial.println("======================");
+
     pinMode(PIN_SENSOR1, INPUT);
     pinMode(PIN_SENSOR2, INPUT);
 
-    // Inicia ambos seriales antes del boot wait
     ambienteBegin();
     vozBegin();
 
@@ -53,25 +72,20 @@ void setup() {
         delay(10);
     }
 
-    // Configura SP1
-    // (volumen ya configurado en ambientePlay)
-    Serial.println("[SP1] Listo ✓");
-
+    // Aplica volúmenes desde config guardada
+    vozSetVolumen(config.volumenVoz);
+    for (uint8_t i = 0; i < 30; i++) { vozPoll(); ambientePoll(); delay(10); }
+    ambienteSetVolumen(config.volumenAmbiente);
+    for (uint8_t i = 0; i < 30; i++) { vozPoll(); ambientePoll(); delay(10); }
     // Inicia SP2 con pista ambiente
-    ambientePlay(3);  // 0003.mp3 en loop
+    ambientePlay(config.pistaAmbiente);
 
     partido.resetear();
-
-#ifdef MODO_GOLES
-    Serial.printf("[JUEGO] Modo: primero en %d goles gana\n", GOLES_MAX);
-#else
-    Serial.printf("[JUEGO] Modo: tiempo %lu ms\n", DURACION_MS);
-#endif
-
     Serial.println("[2] Sistema listo");
 }
 
 void loop() {
+    webConfigLoop();
     vozPoll();
     ambientePoll();
 
@@ -90,23 +104,15 @@ void loop() {
         }
     }
 
-#ifndef MODO_GOLES
-    // Modo tiempo: verificar si terminó el partido
-    if (!partido.termino()) {
-        unsigned long restante = DURACION_MS - (millis() - partido.inicio);
+    if (config.modoJuego == 1) {
+        uint32_t durMs = (uint32_t)config.duracionMin * 60000UL;
         static unsigned long ultimoAviso = 0;
         if (millis() - ultimoAviso >= 10000) {
             ultimoAviso = millis();
+            uint32_t restante = durMs - (millis() - partido.inicio);
             Serial.printf("[JUEGO] Tiempo restante: %lu s\n", restante / 1000);
         }
-    } else {
-        int8_t w = partido.ganador();
-        if (w == 0)      Serial.println("[JUEGO] ¡Tiempo! Ganó equipo 1");
-        else if (w == 1) Serial.println("[JUEGO] ¡Tiempo! Ganó equipo 2");
-        else             Serial.println("[JUEGO] ¡Tiempo! Empate");
-        partido.resetear();
     }
-#endif
 
     prev1 = cur1;
     prev2 = cur2;

@@ -7,3 +7,4 @@
 void ambienteBegin();
 void ambientePlay(uint8_t pista);  // número de pista (1-based)
 void ambientePoll();
+void ambienteSetVolumen(uint8_t vol);
