@@ -13,4 +13,5 @@ public:
     void    getResultado(char* buf, size_t len) const;
     bool    termino() const;
     int8_t  ganador() const;   // 0, 1, o -1 si empate
+    void    registrarGol(uint8_t equipo);
 };

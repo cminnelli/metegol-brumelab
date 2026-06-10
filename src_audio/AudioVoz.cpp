@@ -20,8 +20,12 @@ void vozBegin() {
 }
 
 void vozPlay(Pista pista) {
-    Serial.printf("[SP1] ▶ Pista %d\n", (int)pista);
     cmd(0x03, 0x00, (uint8_t)pista);
+}
+
+void vozPlayTrack(uint8_t n) {
+    Serial.printf("[SP1] ▶ Pista %d\n", n);
+    cmd(0x03, 0x00, n);
 }
 
 void vozSetVolumen(uint8_t vol) {

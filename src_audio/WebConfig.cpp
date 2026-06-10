@@ -2,6 +2,8 @@
 #include "AudioVoz.h"
 #include "AudioAmbiente.h"
 #include <Arduino.h>
+
+static Partido* _partido = nullptr;
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
@@ -19,6 +21,20 @@ static bool _pendingVolUpdate = false;
 
 static char _staSSID[33] = "";
 static char _staPass[65] = "";
+static bool _staAnunciado = false;
+
+static void anunciarSTA() {
+    if (_staAnunciado) return;
+    _staAnunciado = true;
+    MDNS.begin("metegol");
+    MDNS.addService("http", "tcp", 80);
+    Serial.println();
+    Serial.println("───────────────── Metegol online ─────────────────");
+    Serial.printf ("  IP      : http://%s/\n", WiFi.localIP().toString().c_str());
+    Serial.println("  DNS     : http://metegol.local/");
+    Serial.println("  Config  : http://metegol.local/configBrume");
+    Serial.println("──────────────────────────────────────────────────");
+}
 
 static void cargarWiFiCreds() {
     prefs.begin("metegol-wifi", true);
@@ -46,6 +62,29 @@ static void cargarConfig() {
     config.brillo          = prefs.getUChar("brillo",      5);
     config.velocidadScroll = prefs.getUChar("velScroll",  40);
     config.pistaAmbiente   = prefs.getUChar("pistaAmb",    3);
+
+    // Comentarista
+    config.intervaloComentarios     = prefs.getUShort("intervComent", 20);
+    config.goleadaDiff              = prefs.getUChar("goleadaDiff",    3);
+    config.calienteGoles            = prefs.getUChar("calienteGol",    4);
+    config.inicioSegs               = prefs.getUShort("inicioSegs",   60);
+    config.ultimoTramoPorc          = prefs.getUChar("ultiTramoPc",   10);
+    config.comentGol.desde          = prefs.getUChar("cGolD",           3);
+    config.comentGol.hasta          = prefs.getUChar("cGolH",           4);
+    config.comentInicio.desde       = prefs.getUChar("cInD",           1);
+    config.comentInicio.hasta       = prefs.getUChar("cInH",          10);
+    config.comentTranquilo.desde    = prefs.getUChar("cTrD",          11);
+    config.comentTranquilo.hasta    = prefs.getUChar("cTrH",          20);
+    config.comentParejo.desde       = prefs.getUChar("cPaD",          21);
+    config.comentParejo.hasta       = prefs.getUChar("cPaH",          30);
+    config.comentCaliente.desde     = prefs.getUChar("cCaD",          31);
+    config.comentCaliente.hasta     = prefs.getUChar("cCaH",          40);
+    config.comentGoleada.desde      = prefs.getUChar("cGoD",          41);
+    config.comentGoleada.hasta      = prefs.getUChar("cGoH",          50);
+    config.comentDefinido.desde     = prefs.getUChar("cDeD",          51);
+    config.comentDefinido.hasta     = prefs.getUChar("cDeH",          60);
+    config.comentUltimoTramo.desde  = prefs.getUChar("cUtD",          61);
+    config.comentUltimoTramo.hasta  = prefs.getUChar("cUtH",          70);
     prefs.end();
 }
 
@@ -59,6 +98,29 @@ static void guardarConfig() {
     prefs.putUChar("brillo",    config.brillo);
     prefs.putUChar("velScroll", config.velocidadScroll);
     prefs.putUChar("pistaAmb",  config.pistaAmbiente);
+
+    // Comentarista
+    prefs.putUShort("intervComent", config.intervaloComentarios);
+    prefs.putUChar("goleadaDiff",   config.goleadaDiff);
+    prefs.putUChar("calienteGol",   config.calienteGoles);
+    prefs.putUShort("inicioSegs",   config.inicioSegs);
+    prefs.putUChar("ultiTramoPc",   config.ultimoTramoPorc);
+    prefs.putUChar("cGolD", config.comentGol.desde);
+    prefs.putUChar("cGolH", config.comentGol.hasta);
+    prefs.putUChar("cInD",  config.comentInicio.desde);
+    prefs.putUChar("cInH",  config.comentInicio.hasta);
+    prefs.putUChar("cTrD",  config.comentTranquilo.desde);
+    prefs.putUChar("cTrH",  config.comentTranquilo.hasta);
+    prefs.putUChar("cPaD",  config.comentParejo.desde);
+    prefs.putUChar("cPaH",  config.comentParejo.hasta);
+    prefs.putUChar("cCaD",  config.comentCaliente.desde);
+    prefs.putUChar("cCaH",  config.comentCaliente.hasta);
+    prefs.putUChar("cGoD",  config.comentGoleada.desde);
+    prefs.putUChar("cGoH",  config.comentGoleada.hasta);
+    prefs.putUChar("cDeD",  config.comentDefinido.desde);
+    prefs.putUChar("cDeH",  config.comentDefinido.hasta);
+    prefs.putUChar("cUtD",  config.comentUltimoTramo.desde);
+    prefs.putUChar("cUtH",  config.comentUltimoTramo.hasta);
     prefs.end();
 }
 
@@ -217,6 +279,15 @@ static const char HTML[] PROGMEM = R"rawhtml(
   <p>Configuración del sistema</p>
 </header>
 
+<div style="max-width:900px;margin:0 auto 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;text-align:center">
+  <div style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Partido en curso</div>
+  <div id="marcador" style="font-size:3rem;font-weight:700;letter-spacing:6px;color:var(--accent)">0 - 0</div>
+  <div id="timer-wrap" style="display:none;margin-top:10px">
+    <div style="font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:2px">Tiempo restante</div>
+    <div id="timer" style="font-size:1.8rem;font-weight:600;color:var(--muted)">--:--</div>
+  </div>
+</div>
+
 <form id="cfg" method="POST" action="/save">
 <div class="grid">
 
@@ -277,6 +348,75 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <input type="range" name="velocidadScroll" min="10" max="100" value="%VEL_SCROLL%"
              oninput="document.getElementById('vs').textContent=this.value">
     </div>
+  </div>
+
+  <div class="card">
+    <h2>💬 Comentarista</h2>
+    <div class="field">
+      <label>Intervalo (segundos) <span id="ic">%INTERV_COM%</span></label>
+      <input type="range" name="intervaloComentarios" min="5" max="120" value="%INTERV_COM%"
+             oninput="document.getElementById('ic').textContent=this.value">
+    </div>
+    <div class="field">
+      <label>Diff. goles para goleada <span id="gd">%GOLEADA_DIFF%</span></label>
+      <input type="range" name="goleadaDiff" min="2" max="6" value="%GOLEADA_DIFF%"
+             oninput="document.getElementById('gd').textContent=this.value">
+    </div>
+    <div class="field">
+      <label>Total goles para "caliente" <span id="cg">%CALIENTE_GOL%</span></label>
+      <input type="range" name="calienteGoles" min="2" max="10" value="%CALIENTE_GOL%"
+             oninput="document.getElementById('cg').textContent=this.value">
+    </div>
+    <div class="field">
+      <label>Segundos fase inicio <span id="ise">%INICIO_SEGS%</span></label>
+      <input type="range" name="inicioSegs" min="10" max="300" value="%INICIO_SEGS%"
+             oninput="document.getElementById('ise').textContent=this.value">
+    </div>
+    <div class="field">
+      <label>% tiempo para último tramo <span id="utp">%ULTI_TRAMO%</span></label>
+      <input type="range" name="ultimoTramoPorc" min="5" max="30" value="%ULTI_TRAMO%"
+             oninput="document.getElementById('utp').textContent=this.value">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🎵 Rangos de Audio</h2>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Índice de ítem por estado (futuro: pista MP3)</p>
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead>
+        <tr style="color:var(--muted)">
+          <th style="text-align:left;padding:4px 0;font-weight:500">Estado</th>
+          <th style="padding:4px 8px;font-weight:500">Desde</th>
+          <th style="padding:4px 8px;font-weight:500">Hasta</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td style="padding:5px 0;color:var(--accent2)"><b>gol</b> ⚽</td>
+          <td style="padding:3px 8px"><input type="number" name="cGolD" min="0" max="255" value="%C_GOL_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cGolH" min="0" max="255" value="%C_GOL_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:5px 0;color:var(--text)">inicio</td>
+          <td style="padding:3px 8px"><input type="number" name="cInD" min="0" max="255" value="%C_IN_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cInH" min="0" max="255" value="%C_IN_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:5px 0;color:var(--text)">tranquilo</td>
+          <td style="padding:3px 8px"><input type="number" name="cTrD" min="0" max="255" value="%C_TR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cTrH" min="0" max="255" value="%C_TR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:5px 0;color:var(--text)">parejo</td>
+          <td style="padding:3px 8px"><input type="number" name="cPaD" min="0" max="255" value="%C_PA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cPaH" min="0" max="255" value="%C_PA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:5px 0;color:var(--text)">caliente</td>
+          <td style="padding:3px 8px"><input type="number" name="cCaD" min="0" max="255" value="%C_CA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cCaH" min="0" max="255" value="%C_CA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:5px 0;color:var(--text)">goleada</td>
+          <td style="padding:3px 8px"><input type="number" name="cGoD" min="0" max="255" value="%C_GO_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cGoH" min="0" max="255" value="%C_GO_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:5px 0;color:var(--text)">definido</td>
+          <td style="padding:3px 8px"><input type="number" name="cDeD" min="0" max="255" value="%C_DE_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cDeH" min="0" max="255" value="%C_DE_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:5px 0;color:var(--text)">ultimo_tramo</td>
+          <td style="padding:3px 8px"><input type="number" name="cUtD" min="0" max="255" value="%C_UT_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cUtH" min="0" max="255" value="%C_UT_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+      </tbody>
+    </table>
   </div>
 
 </div>
@@ -432,6 +572,24 @@ static const char HTML[] PROGMEM = R"rawhtml(
     );
   }
 
+  function actualizarMarcador() {
+    fetch('/estado').then(r=>r.json()).then(d=>{
+      document.getElementById('marcador').textContent = d.marcador || '0 - 0';
+      const tw = document.getElementById('timer-wrap');
+      if (d.modo === 1) {
+        tw.style.display = 'block';
+        const s = d.tiempoRestante || 0;
+        const mm = String(Math.floor(s/60)).padStart(2,'0');
+        const ss = String(s%60).padStart(2,'0');
+        document.getElementById('timer').textContent = mm + ':' + ss;
+      } else {
+        tw.style.display = 'none';
+      }
+    }).catch(()=>{});
+  }
+  actualizarMarcador();
+  setInterval(actualizarMarcador, 3000);
+
   document.getElementById('cfg').addEventListener('submit', function(e) {
     e.preventDefault();
     const data = new FormData(this);
@@ -464,6 +622,29 @@ static String buildPage() {
     html.replace("%DUR_MIN%",    String(config.duracionMin));
     html.replace("%BRILLO%",     String(config.brillo));
     html.replace("%VEL_SCROLL%", String(config.velocidadScroll));
+    // Comentarista — thresholds
+    html.replace("%INTERV_COM%",  String(config.intervaloComentarios));
+    html.replace("%GOLEADA_DIFF%",String(config.goleadaDiff));
+    html.replace("%CALIENTE_GOL%",String(config.calienteGoles));
+    html.replace("%INICIO_SEGS%", String(config.inicioSegs));
+    html.replace("%ULTI_TRAMO%",  String(config.ultimoTramoPorc));
+    // Comentarista — rangos
+    html.replace("%C_GOL_D%", String(config.comentGol.desde));
+    html.replace("%C_GOL_H%", String(config.comentGol.hasta));
+    html.replace("%C_IN_D%", String(config.comentInicio.desde));
+    html.replace("%C_IN_H%", String(config.comentInicio.hasta));
+    html.replace("%C_TR_D%", String(config.comentTranquilo.desde));
+    html.replace("%C_TR_H%", String(config.comentTranquilo.hasta));
+    html.replace("%C_PA_D%", String(config.comentParejo.desde));
+    html.replace("%C_PA_H%", String(config.comentParejo.hasta));
+    html.replace("%C_CA_D%", String(config.comentCaliente.desde));
+    html.replace("%C_CA_H%", String(config.comentCaliente.hasta));
+    html.replace("%C_GO_D%", String(config.comentGoleada.desde));
+    html.replace("%C_GO_H%", String(config.comentGoleada.hasta));
+    html.replace("%C_DE_D%", String(config.comentDefinido.desde));
+    html.replace("%C_DE_H%", String(config.comentDefinido.hasta));
+    html.replace("%C_UT_D%", String(config.comentUltimoTramo.desde));
+    html.replace("%C_UT_H%", String(config.comentUltimoTramo.hasta));
     return html;
 }
 
@@ -480,6 +661,29 @@ static void handleSave() {
     if (server.hasArg("brillo"))          config.brillo          = server.arg("brillo").toInt();
     if (server.hasArg("velocidadScroll")) config.velocidadScroll = server.arg("velocidadScroll").toInt();
     if (server.hasArg("pistaAmbiente"))   config.pistaAmbiente   = server.arg("pistaAmbiente").toInt();
+    // Comentarista — thresholds
+    if (server.hasArg("intervaloComentarios")) config.intervaloComentarios = server.arg("intervaloComentarios").toInt();
+    if (server.hasArg("goleadaDiff"))          config.goleadaDiff          = server.arg("goleadaDiff").toInt();
+    if (server.hasArg("calienteGoles"))        config.calienteGoles        = server.arg("calienteGoles").toInt();
+    if (server.hasArg("inicioSegs"))           config.inicioSegs           = server.arg("inicioSegs").toInt();
+    if (server.hasArg("ultimoTramoPorc"))      config.ultimoTramoPorc      = server.arg("ultimoTramoPorc").toInt();
+    // Comentarista — rangos
+    if (server.hasArg("cGolD")) config.comentGol.desde          = server.arg("cGolD").toInt();
+    if (server.hasArg("cGolH")) config.comentGol.hasta          = server.arg("cGolH").toInt();
+    if (server.hasArg("cInD")) config.comentInicio.desde        = server.arg("cInD").toInt();
+    if (server.hasArg("cInH")) config.comentInicio.hasta       = server.arg("cInH").toInt();
+    if (server.hasArg("cTrD")) config.comentTranquilo.desde    = server.arg("cTrD").toInt();
+    if (server.hasArg("cTrH")) config.comentTranquilo.hasta    = server.arg("cTrH").toInt();
+    if (server.hasArg("cPaD")) config.comentParejo.desde       = server.arg("cPaD").toInt();
+    if (server.hasArg("cPaH")) config.comentParejo.hasta       = server.arg("cPaH").toInt();
+    if (server.hasArg("cCaD")) config.comentCaliente.desde     = server.arg("cCaD").toInt();
+    if (server.hasArg("cCaH")) config.comentCaliente.hasta     = server.arg("cCaH").toInt();
+    if (server.hasArg("cGoD")) config.comentGoleada.desde      = server.arg("cGoD").toInt();
+    if (server.hasArg("cGoH")) config.comentGoleada.hasta      = server.arg("cGoH").toInt();
+    if (server.hasArg("cDeD")) config.comentDefinido.desde     = server.arg("cDeD").toInt();
+    if (server.hasArg("cDeH")) config.comentDefinido.hasta     = server.arg("cDeH").toInt();
+    if (server.hasArg("cUtD")) config.comentUltimoTramo.desde  = server.arg("cUtD").toInt();
+    if (server.hasArg("cUtH")) config.comentUltimoTramo.hasta  = server.arg("cUtH").toInt();
 
     guardarConfig();
     _pendingVolUpdate = true;  // aplica volumen en el próximo loop, no aquí
@@ -489,9 +693,67 @@ static void handleSave() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handleEstado() {
+    char buf[128];
+    if (_partido) {
+        char marcador[16];
+        _partido->getResultado(marcador, sizeof(marcador));
+        uint32_t elapsed  = millis() - _partido->inicio;
+        uint32_t durMs    = (uint32_t)config.duracionMin * 60000UL;
+        uint32_t restante = (config.modoJuego == 1 && elapsed < durMs)
+                            ? (durMs - elapsed) / 1000 : 0;
+        snprintf(buf, sizeof(buf),
+            "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,\"tiempoRestante\":%lu}",
+            _partido->goles[0], _partido->goles[1], marcador, config.modoJuego,
+            (unsigned long)restante);
+    } else {
+        snprintf(buf, sizeof(buf),
+            "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,\"tiempoRestante\":0}",
+            config.modoJuego);
+    }
+    server.send(200, "application/json", buf);
+}
+
+static void handleConfigBrumeGet() {
+    static char buf[640];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"intervaloComentarios\":%d,"
+        "\"reglas\":{"
+          "\"goleadaDiff\":%d,"
+          "\"calienteGoles\":%d,"
+          "\"inicioSegs\":%d,"
+          "\"ultimoTramoPorc\":%d"
+        "},"
+        "\"comentarios\":{"
+          "\"gol\":{\"desde\":%d,\"hasta\":%d},"
+          "\"inicio\":{\"desde\":%d,\"hasta\":%d},"
+          "\"tranquilo\":{\"desde\":%d,\"hasta\":%d},"
+          "\"parejo\":{\"desde\":%d,\"hasta\":%d},"
+          "\"caliente\":{\"desde\":%d,\"hasta\":%d},"
+          "\"goleada\":{\"desde\":%d,\"hasta\":%d},"
+          "\"definido\":{\"desde\":%d,\"hasta\":%d},"
+          "\"ultimo_tramo\":{\"desde\":%d,\"hasta\":%d}"
+        "}}",
+        config.intervaloComentarios,
+        config.goleadaDiff, config.calienteGoles,
+        config.inicioSegs, config.ultimoTramoPorc,
+        config.comentGol.desde,         config.comentGol.hasta,
+        config.comentInicio.desde,      config.comentInicio.hasta,
+        config.comentTranquilo.desde,   config.comentTranquilo.hasta,
+        config.comentParejo.desde,      config.comentParejo.hasta,
+        config.comentCaliente.desde,    config.comentCaliente.hasta,
+        config.comentGoleada.desde,     config.comentGoleada.hasta,
+        config.comentDefinido.desde,    config.comentDefinido.hasta,
+        config.comentUltimoTramo.desde, config.comentUltimoTramo.hasta
+    );
+    server.send(200, "application/json", buf);
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
-void webConfigInit() {
+void webConfigInit(Partido* p) {
+    _partido = p;
     cargarConfig();
     cargarWiFiCreds();
 
@@ -499,29 +761,32 @@ void webConfigInit() {
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(WIFI_SSID, WIFI_PASS);
-    IPAddress ip = WiFi.softAPIP();
-    Serial.printf("[WiFi] AP: %s — IP: %s\n", WIFI_SSID, ip.toString().c_str());
+    IPAddress apIp = WiFi.softAPIP();
 
     // Intentar conexión STA si hay credenciales guardadas
+    bool staOk = false;
+    wl_status_t staStatus = WL_IDLE_STATUS;
     if (strlen(_staSSID) > 0) {
-        Serial.printf("[WiFi] Conectando a '%s'...\n", _staSSID);
+        Serial.printf("[WiFi] Conectando a '%s'", _staSSID);
         WiFi.begin(_staSSID, _staPass);
-        uint8_t intentos = 0;
-        while (WiFi.status() != WL_CONNECTED && intentos < 20) {
-            delay(500); intentos++;
+        for (uint8_t i = 0; i < 30; i++) {   // 15 segundos máximo
+            delay(500);
+            if (WiFi.status() == WL_CONNECTED) break;
+            if (i % 4 == 3) Serial.print(".");
         }
-        if (WiFi.isConnected())
-            Serial.printf("[WiFi] STA conectado — IP: %s\n", WiFi.localIP().toString().c_str());
-        else
-            Serial.println("[WiFi] STA no disponible, solo AP activo");
+        Serial.println();
+        staOk     = WiFi.isConnected();
+        staStatus = WiFi.status();
+        if (staOk) anunciarSTA();
     }
 
-    // Captive portal: redirige cualquier dominio al ESP32
-    dns.start(53, "*", ip);
-    Serial.println("[WiFi] DNS captive portal activo");
+    // Captive portal
+    dns.start(53, "*", apIp);
 
     server.on("/", HTTP_GET, handleRoot);
     server.on("/save", HTTP_POST, handleSave);
+    server.on("/estado", HTTP_GET, handleEstado);
+    server.on("/configBrume", HTTP_GET, handleConfigBrumeGet);
 
     server.on("/wifiStatus", HTTP_GET, [](){
         String json = "{\"connected\":";
@@ -568,9 +833,10 @@ void webConfigInit() {
     });
 
     server.onNotFound([](){
-        // Solo redirigir si parece un captive portal probe (host != 192.168.4.1)
-        String host = server.hostHeader();
-        if (host.length() > 0 && !host.startsWith("192.168.4.1")) {
+        // Redirigir captive portal solo si el cliente viene del AP (192.168.4.x)
+        // Clientes STA (red de casa) reciben 404 normal
+        IPAddress client = server.client().remoteIP();
+        if (client[0] == 192 && client[1] == 168 && client[2] == 4) {
             server.sendHeader("Location", "http://192.168.4.1/");
             server.send(302);
         } else {
@@ -579,7 +845,31 @@ void webConfigInit() {
     });
 
     server.begin();
-    Serial.println("[WiFi] Servidor HTTP listo");
+
+    // ── Banner de estado WiFi ─────────────────────────────────────────────────
+    Serial.println();
+    Serial.println("┌────────────────── WiFi ──────────────────┐");
+    Serial.printf ("│  AP    : %-8s   %s             │\n", WIFI_SSID, apIp.toString().c_str());
+    if (staOk) {
+        // anunciarSTA() ya imprimió el banner STA completo
+    } else if (strlen(_staSSID) > 0) {
+        const char* razon;
+        switch (staStatus) {
+            case WL_NO_SSID_AVAIL:  razon = "SSID no encontrado en rango";  break;
+            case WL_CONNECT_FAILED: razon = "contrasena incorrecta";         break;
+            default:                razon = "timeout — sin respuesta";       break;
+        }
+        Serial.printf ("│  STA   : %-32s│\n", _staSSID);
+        Serial.printf ("│  Error : %-32s│\n", razon);
+        Serial.printf ("│  Status: %d                                │\n", (int)staStatus);
+        Serial.println("│  Acceso: http://192.168.4.1/             │");
+        Serial.println("└──────────────────────────────────────────┘");
+    } else {
+        Serial.println("│  STA   : sin configurar                  │");
+        Serial.println("│  Acceso: http://192.168.4.1/             │");
+        Serial.println("└──────────────────────────────────────────┘");
+    }
+    Serial.println();
 }
 
 void webConfigLoop() {
@@ -592,17 +882,9 @@ void webConfigLoop() {
         ambienteSetVolumen(config.volumenAmbiente);
     }
 
-    // Anunciar cuando el STA conecta
-    static bool _staAnunciado = false;
-    if (!_staAnunciado && WiFi.isConnected()) {
-        _staAnunciado = true;
-        MDNS.begin("metegol");
-        MDNS.addService("http", "tcp", 80);
-        Serial.println("╔══════════════════════════════════════════╗");
-        Serial.printf ("║  IP local  : http://%s\n", WiFi.localIP().toString().c_str());
-        Serial.println("║  mDNS      : http://metegol.local        ║");
-        Serial.println("╚══════════════════════════════════════════╝");
-    }
+    // Anunciar cuando el STA conecta (caso: conecta después del boot)
+    if (!_staAnunciado && WiFi.isConnected())
+        anunciarSTA();
     if (_staAnunciado && !WiFi.isConnected()) {
         _staAnunciado = false;
         Serial.println("[WiFi] STA desconectado, reintentando...");

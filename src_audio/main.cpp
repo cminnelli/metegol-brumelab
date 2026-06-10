@@ -3,6 +3,7 @@
 #include "AudioAmbiente.h"
 #include "Partido.h"
 #include "WebConfig.h"
+#include "Comentarista.h"
 #include "config.h"
 
 #define PIN_SENSOR1 34
@@ -10,40 +11,12 @@
 
 Partido partido;
 
-static void registrarGol(uint8_t equipo) {
-    partido.sumarGol(equipo);
-
-    if (equipo == 0) {
-        Serial.println("[JUEGO] Gol equipo 1");
-        vozPlay(Pista::GOL1);
-    } else {
-        Serial.println("[JUEGO] Gol equipo 2");
-        vozPlay(Pista::GOL2);
-    }
-
-    char buf[16];
-    partido.getResultado(buf, sizeof(buf));
-    Serial.printf("[JUEGO] Marcador: %s\n", buf);
-
-    bool terminado = (config.modoJuego == 0)
-        ? (partido.goles[0] >= config.golesMax || partido.goles[1] >= config.golesMax)
-        : ((millis() - partido.inicio) >= (uint32_t)config.duracionMin * 60000UL);
-
-    if (terminado) {
-        int8_t w = partido.ganador();
-        if (w == 0)      Serial.println("[JUEGO] ¡Ganó equipo 1!");
-        else if (w == 1) Serial.println("[JUEGO] ¡Ganó equipo 2!");
-        else             Serial.println("[JUEGO] ¡Empate!");
-        partido.resetear();
-        Serial.println("[JUEGO] Partido reiniciado");
-    }
-}
 
 void setup() {
     Serial.begin(115200);
     Serial.println("[1] Serial OK");
 
-    webConfigInit();  // carga config desde NVS + inicia AP WiFi
+    webConfigInit(&partido);  // carga config desde NVS + inicia AP WiFi
 
     Serial.println("=== CONFIG CARGADA ===");
     Serial.printf("  Volumen (voz)     : %d\n", config.volumenVoz);
@@ -88,19 +61,26 @@ void loop() {
     webConfigLoop();
     vozPoll();
     ambientePoll();
+    comentaristaLoop(partido);
 
     static bool prev1 = HIGH, prev2 = HIGH;
-    static unsigned long ultimoGol = 0;
+    static unsigned long ultimoGol1 = 0;
+    static unsigned long ultimoGol2 = 0;
     bool cur1 = digitalRead(PIN_SENSOR1);
     bool cur2 = digitalRead(PIN_SENSOR2);
 
-    if (millis() - ultimoGol >= 2000) {
+
+    // Cada sensor tiene su propio debounce independiente
+    if (millis() - ultimoGol1 >= 2000) {
         if (cur1 == LOW && prev1 == HIGH) {
-            ultimoGol = millis();
-            registrarGol(0);
-        } else if (cur2 == LOW && prev2 == HIGH) {
-            ultimoGol = millis();
-            registrarGol(1);
+            ultimoGol1 = millis();
+            partido.registrarGol(0);
+        }
+    }
+    if (millis() - ultimoGol2 >= 2000) {
+        if (cur2 == LOW && prev2 == HIGH) {
+            ultimoGol2 = millis();
+            partido.registrarGol(1);
         }
     }
 

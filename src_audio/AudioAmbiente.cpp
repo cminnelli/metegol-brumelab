@@ -5,8 +5,7 @@
 #define AMB_TX 16
 #define AMB_RX 17
 
-static uint8_t  _pistaActual  = 3;
-static uint32_t _reloopMs     = 0;   // timestamp para reloop no bloqueante
+static uint8_t _pistaActual = 3;
 
 static void cmd(uint8_t c, uint8_t ph, uint8_t pl) {
     uint8_t buf[10];
@@ -30,18 +29,12 @@ void ambienteSetVolumen(uint8_t vol) {
 
 void ambientePlay(uint8_t pista) {
     _pistaActual = pista;
-    Serial.printf("[SP2] ▶ Pista %d (ambiente)\n", pista);
-    cmd(0x03, 0x00, pista);
+    Serial.printf("[SP2] ▶ Pista %d (ambiente, loop)\n", pista);
+    cmd(0x03, 0x00, pista);   // play
+    cmd(0x19, 0x00, 0x00);    // single-track repeat — el DFPlayer loopea solo
 }
 
 void ambientePoll() {
-    // Reloop no bloqueante — espera 500ms después del fin de pista
-    if (_reloopMs > 0 && millis() - _reloopMs >= 500) {
-        _reloopMs = 0;
-        Serial.printf("[SP2] ▶ Reloop pista %d\n", _pistaActual);
-        cmd(0x03, 0x00, _pistaActual);
-    }
-
     static uint8_t buf[10], idx = 0;
     while (Serial1.available()) {
         uint8_t b = Serial1.read();
@@ -50,12 +43,9 @@ void ambientePoll() {
         if (idx >= 10 && buf[9] == 0xEF) {
             uint8_t tipo = buf[3], val = buf[6];
             switch (tipo) {
-                case 0x3D: Serial.printf("[SP2] ✓ Pista %d terminada\n", val);
-                           _reloopMs = millis();  // programa reloop en 500ms
-                           break;
-                case 0x3F: Serial.println("[SP2] SD online ✓");                 break;
+                case 0x3F: Serial.println("[SP2] SD online ✓"); break;
                 case 0x40: if (val != 0x03) Serial.printf("[SP2] ✗ Error 0x%02X\n", val); break;
-                default:   Serial.printf("[SP2] RX 0x%02X\n", tipo);            break;
+                default: break;
             }
             idx = 0;
         }
