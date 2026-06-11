@@ -42,16 +42,17 @@ void Partido::registrarGol(uint8_t equipo) {
 
     comentaristaOnGol(*this);
 
-    bool terminado = (config.modoJuego == 0)
+    bool fin = (config.modoJuego == 0)
         ? (goles[0] >= config.golesMax || goles[1] >= config.golesMax)
         : ((millis() - inicio) >= (uint32_t)config.duracionMin * 60000UL);
 
-    if (terminado) {
+    if (fin) {
         int8_t w = ganador();
         if (w == 0)      Serial.println("[JUEGO] ¡Ganó equipo 1!");
         else if (w == 1) Serial.println("[JUEGO] ¡Ganó equipo 2!");
         else             Serial.println("[JUEGO] ¡Empate!");
-        resetear();
-        Serial.println("[JUEGO] Partido reiniciado");
+        activo    = false;
+        terminado = true;
+        Serial.println("[JUEGO] Partido finalizado — esperando Start");
     }
 }

@@ -1,0 +1,77 @@
+#	ESTADO	FRASE
+0001	INICIO	¡Arranca el partido, señoras y señores!
+0002	INICIO	¡Que ruede la pelota, señoras y señores!
+0003	INICIO	¡Ya arrancó el partido, que viva el fútbol!
+0004	INICIO	¡Ya se juega este duelo que promete emociones!
+0005	INICIO	¡Empieza la historia, veremos quién la escribe mejor!
+0006	INICIO	¡Empieza la batalla en este gran partido!
+0007	PRIMEROS_MINUTOS	Se siguen estudiando en los primeros minutos.
+0008	PRIMEROS_MINUTOS	Esto recién empieza, pero ya se vive clima de partido!
+0009	PRIMEROS_MINUTOS	Nadie regala nada, esto recién arranca!
+0010	PRIMEROS_MINUTOS	Todavía nadie muestra las cartas!...
+0011	PRIMEROS_MINUTOS	Está claro que nadie quiere cometer el primer error.
+0012	PRIMEROS_MINUTOS	Mucha cautela en los primeros minutos.
+0013	PAREJO	Nadie regala absolutamente nada.
+0014	PAREJO	Esto está para cualquiera!
+0015	PAREJO	Partido chivo, durísimo.
+0016	PAREJO	No se sacan diferencias.
+0017	PAREJO	Un error puede cambiar toda la historia.
+0018	PAREJO	Está más cerrado que banco un feriado.
+0019	CALIENTE	¡Mamita querida como está este partido!
+0020	CALIENTE	¡Este partido va a quedar en la historia!
+0021	CALIENTE	¡No se regalan absolutamente nada!
+0022	CALIENTE	¡El partido está al rojo vivo!
+0023	CALIENTE	¡Esto es una locura hermosa!
+0024	CALIENTE	¡Partidazo con todas las letras!
+0025	GOLEADA	Los están pasando por arriba.
+0026	GOLEADA	Hay uno que juega y otro que no ve la hora que termine.
+0027	GOLEADA	La diferencia empieza a ser demasiado grande.
+0028	GOLEADA	La remontada ya parece imposible!
+0029	GOLEADA	Está sacando chapa de candidato.
+0030	GOLEADA	Pinta para goleada de las que duelen.
+0031	DEFINIDO	Salvo un milagro, empieza a cerrarse la historia.
+0032	DEFINIDO	La victoria está cada vez más cerca.
+0033	DEFINIDO	Ya se empieza a bajar la persiana.
+0034	DEFINIDO	Están controlando el partido con autoridad.
+0035	DEFINIDO	Claramente este partido ya tiene dueño.
+0036	DEFINIDO	Hace falta un milagro para cambiar esto!
+0037	ULTIMO_TRAMO	¡Entramos en zona de definición!
+0038	ULTIMO_TRAMO	¡Se vienen los segundos más calientes!
+0039	ULTIMO_TRAMO	¡Ahora sí, se juega el todo por el todo!
+0040	ULTIMO_TRAMO	¡No queda prácticamente nada!
+0041	ULTIMO_TRAMO	¡Se viene un cierre para el infarto!
+0042	ULTIMO_TRAMO	¡Estamos en la recta final del partido!
+0043	ABURRIDO	Mucha lucha, poco fútbol.
+0044	ABURRIDO	Parece que arqueros están de espectadores.
+0045	ABURRIDO	Le está faltando pimienta al partido.
+0046	ABURRIDO	Mucho estudio, pocas emociones.
+0047	ABURRIDO	Che, me parece que los dos cuidan más de lo que arriesgan.
+0048	ABURRIDO	Este partido más trabado que trámite en la municipalidad.
+0049	TRANQUILO	Pocas situaciones claras por ahora.
+0050	TRANQUILO	Momento de calma en el partido.
+0051	TRANQUILO	Bajó un cambio el encuentro.
+0052	TRANQUILO	Los dos intentan acomodarse.
+0053	TRANQUILO	Circula la pelota, pero sin profundidad.
+0054	TRANQUILO	Partido controlado por ahora.
+0055	GOL_NORMAL	¡Gol! ¡Gol! ¡Gol!
+0056	GOL_NORMAL	¡Gol! ¡La mandó a guardar!
+0057	GOL_NORMAL	¡Gol! ¡No perdonó!
+0058	GOL_NORMAL	¡Gol y a sacar del medio!
+0059	GOL_EFUSIVO	¡GOOOOOOOOOOOL! ¡Qué locura!
+0060	GOL_EFUSIVO	¡GOOOOOOOOOOOL! ¡Tremendo golazo!
+0061	GOL_EFUSIVO	¡GOOOOOOOOOOOL! ¡Se viene abajo el estadio!
+0062	GOL_EFUSIVO	¡GOOOOOOOOOOOL! ¡Pero qué golazo, por favor!
+0063	GOL_EMPATE	¡Golazo! ¡Empate! ¡Empate señores!
+0064	GOL_EMPATE	¡Gooooooool! ¡Y lo empata cuando parecía imposible!
+0065	GOL_EMPATE	¡Golazo! ¡Vuelve todo a emparejarse!
+0066	GOL_EMPATE	¡Gooooooool! ¡Empieza otro partido!
+0067	GOL_CALIENTE	¡GOOOOOOL! ¡No terminaron de festejar uno y llegó el otro!
+0068	GOL_CALIENTE	¡GOOOOOOL! ¡Que pedazo de golazo por dios!
+0069	GOL_CALIENTE	¡GOOOOOOL! ¡Esto no da respiro!
+0070	GOL_CALIENTE	¡GOOOOOOL! ¡Partido recontra caliente!
+0071	GOL_AGONICO	¡GOOOOOOL! ¡SOBRE LA HORA!
+0072	GOL_AGONICO	¡GOOOOOOL! ¡Cuando el partido parecía que se moría!
+0073	GOL_AGONICO	¡GOOOOOOL! ¡Gol agónico, señoras y señores!
+0074	GOL_AGONICO_EMPATE	¡GOOOOOOL! ¡EMPATE AGÓNICO! ¡NO LO PUEDO CREER!
+0075	GOL_AGONICO_EMPATE	¡GOOOOOOL! ¡Lo empató en una de las últimas del partido!
+0076	GOL_AGONICO_EMPATE	¡GOOOOOOL! ¡Rescató un empate imposible!

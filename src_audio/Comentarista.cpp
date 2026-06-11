@@ -6,36 +6,35 @@
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
 enum class EstadoPartido : uint8_t {
-    INICIO,
-    ULTIMO_TRAMO,
-    GOLEADA,
-    CALIENTE,
-    PAREJO,
-    DEFINIDO,
-    TRANQUILO
+    INICIO, PRIMEROS_MINUTOS, ULTIMO_TRAMO,
+    GOLEADA, CALIENTE, PAREJO, DEFINIDO, ABURRIDO, TRANQUILO
 };
 
 static const char* nombreEstado(EstadoPartido e) {
     switch (e) {
-        case EstadoPartido::INICIO:       return "inicio";
-        case EstadoPartido::ULTIMO_TRAMO: return "ultimo_tramo";
-        case EstadoPartido::GOLEADA:      return "goleada";
-        case EstadoPartido::CALIENTE:     return "caliente";
-        case EstadoPartido::PAREJO:       return "parejo";
-        case EstadoPartido::DEFINIDO:     return "definido";
-        default:                          return "tranquilo";
+        case EstadoPartido::INICIO:           return "inicio";
+        case EstadoPartido::PRIMEROS_MINUTOS: return "primeros_min";
+        case EstadoPartido::ULTIMO_TRAMO:     return "ultimo_tramo";
+        case EstadoPartido::GOLEADA:          return "goleada";
+        case EstadoPartido::CALIENTE:         return "caliente";
+        case EstadoPartido::PAREJO:           return "parejo";
+        case EstadoPartido::DEFINIDO:         return "definido";
+        case EstadoPartido::ABURRIDO:         return "aburrido";
+        default:                              return "tranquilo";
     }
 }
 
 static const RangoAudio& rangoDeEstado(EstadoPartido e) {
     switch (e) {
-        case EstadoPartido::INICIO:       return config.comentInicio;
-        case EstadoPartido::ULTIMO_TRAMO: return config.comentUltimoTramo;
-        case EstadoPartido::GOLEADA:      return config.comentGoleada;
-        case EstadoPartido::CALIENTE:     return config.comentCaliente;
-        case EstadoPartido::PAREJO:       return config.comentParejo;
-        case EstadoPartido::DEFINIDO:     return config.comentDefinido;
-        default:                          return config.comentTranquilo;
+        case EstadoPartido::INICIO:           return config.comentInicio;
+        case EstadoPartido::PRIMEROS_MINUTOS: return config.comentPrimerosMins;
+        case EstadoPartido::ULTIMO_TRAMO:     return config.comentUltimoTramo;
+        case EstadoPartido::GOLEADA:          return config.comentGoleada;
+        case EstadoPartido::CALIENTE:         return config.comentCaliente;
+        case EstadoPartido::PAREJO:           return config.comentParejo;
+        case EstadoPartido::DEFINIDO:         return config.comentDefinido;
+        case EstadoPartido::ABURRIDO:         return config.comentAburrido;
+        default:                              return config.comentTranquilo;
     }
 }
 
@@ -50,9 +49,12 @@ static EstadoPartido determinarEstado(const Partido& p) {
     if (elapsed < (uint32_t)config.inicioSegs * 1000)
         return EstadoPartido::INICIO;
 
-    // 2. Último tramo — lógica distinta según modo de juego
+    // 2. Primeros minutos
+    if (elapsed < (uint32_t)config.primerosMinsSegs * 1000)
+        return EstadoPartido::PRIMEROS_MINUTOS;
+
+    // 3. Último tramo — lógica distinta según modo de juego
     if (config.modoJuego == 1) {
-        // Modo tiempo: evalúa porcentaje restante
         uint32_t tiempoTotal = (uint32_t)config.duracionMin * 60000UL;
         if (tiempoTotal > elapsed) {
             uint32_t restante = tiempoTotal - elapsed;
@@ -60,29 +62,46 @@ static EstadoPartido determinarEstado(const Partido& p) {
                 return EstadoPartido::ULTIMO_TRAMO;
         }
     } else {
-        // Modo goles: líder necesita ≤ 1 gol para ganar
         uint8_t maxGoles = max(p.goles[0], p.goles[1]);
         if (config.golesMax > maxGoles && (config.golesMax - maxGoles) <= 1)
             return EstadoPartido::ULTIMO_TRAMO;
     }
 
-    // 3–7. Marcador (fase media del partido)
-    if (diff >= config.goleadaDiff)        return EstadoPartido::GOLEADA;
-    if (total >= config.calienteGoles)     return EstadoPartido::CALIENTE;
-    if (diff == 0)                         return EstadoPartido::PAREJO;
-    if (diff >= 1)                         return EstadoPartido::DEFINIDO;
+    // 4–9. Marcador
+    if (diff >= config.goleadaDiff)                               return EstadoPartido::GOLEADA;
+    if (total >= config.calienteGoles && diff < config.goleadaDiff) return EstadoPartido::CALIENTE;
+    if (total == 0)                                               return EstadoPartido::ABURRIDO;
+    if (diff == 0)                                                return EstadoPartido::PAREJO;
+    if (diff >= 1)                                                return EstadoPartido::DEFINIDO;
     return EstadoPartido::TRANQUILO;
+}
+
+// ── Selección contextual de gol ───────────────────────────────────────────────
+
+static const RangoAudio& seleccionarRangoGol(const Partido& p) {
+    bool esEmpate   = (p.goles[0] == p.goles[1]);
+    bool esUltimoT  = (determinarEstado(p) == EstadoPartido::ULTIMO_TRAMO);
+    uint8_t diff    = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
+    uint8_t total   = p.goles[0] + p.goles[1];
+
+    if (esUltimoT && esEmpate)                              return config.golAgonicoEmpate;
+    if (esUltimoT)                                          return config.golAgonico;
+    if (esEmpate)                                           return config.golEmpate;
+    if (total >= config.calienteGoles && diff < config.goleadaDiff) return config.golCaliente;
+    if (diff >= config.goleadaDiff)                         return config.golEfusivo;
+    return config.golNormal;
 }
 
 // ── Helpers internos ─────────────────────────────────────────────────────────
 
-static uint32_t _ultimoComentario = 0;
+static uint32_t _proximoComentario = 0;
+static bool     _iniciado          = false;
 
 static void reproducir(const char* label, const RangoAudio& rango) {
     if (rango.desde == 0 && rango.hasta == 0) return;
     if (rango.desde > rango.hasta)             return;
     uint8_t item = (uint8_t)random(rango.desde, rango.hasta + 1);
-    Serial.printf("[COMENTARIO] Estado: %-12s — ítem %d\n", label, item);
+    Serial.printf("[COMENTARIO] %-16s — pista %d\n", label, item);
     vozPlayTrack(item);
 }
 
@@ -92,16 +111,45 @@ static void dispararComentario(const Partido& partido) {
     reproducir(nombreEstado(estado), rango);
 }
 
+static void programarProximo() {
+    uint32_t minMs = (uint32_t)config.intervaloComentariosMin * 1000UL;
+    uint32_t maxMs = (uint32_t)config.intervaloComentariosMax * 1000UL;
+    if (maxMs < minMs) maxMs = minMs;
+    _proximoComentario = millis() + (uint32_t)random(minMs, maxMs + 1);
+}
+
 // ── API pública ───────────────────────────────────────────────────────────────
 
 void comentaristaLoop(const Partido& partido) {
-    uint32_t intervaloMs = (uint32_t)config.intervaloComentarios * 1000UL;
-    if (millis() - _ultimoComentario < intervaloMs) return;
-    _ultimoComentario = millis();
+    if (!partido.activo) return;
+    if (!_iniciado) {
+        _iniciado = true;
+        _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
+        return;
+    }
+    if (millis() < _proximoComentario) return;
     dispararComentario(partido);
+    programarProximo();
 }
 
 void comentaristaOnGol(const Partido& partido) {
-    reproducir("gol", config.comentGol);
-    _ultimoComentario = millis();  // reinicia timer para no duplicar comentario enseguida
+    // DFPlayer sobreescribe el track en curso — el gol siempre pisa cualquier comentario
+    const RangoAudio& rango = seleccionarRangoGol(partido);
+    reproducir("gol", rango);
+    _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
+}
+
+void comentaristaStats(const Partido& partido) {
+    uint32_t elapsed = millis() - partido.inicio;
+    uint32_t mm      = elapsed / 60000;
+    uint32_t ss      = (elapsed % 60000) / 1000;
+    EstadoPartido e  = determinarEstado(partido);
+    uint8_t diff     = (uint8_t)abs((int)partido.goles[0] - (int)partido.goles[1]);
+    uint8_t total    = partido.goles[0] + partido.goles[1];
+    const char* estadoActivo = partido.activo ? nombreEstado(e) : (partido.terminado ? "terminado" : "en_espera");
+    Serial.printf("[STATS] %02lu:%02lu | %d-%d | %-13s | diff:%d total:%d | modo:%s\n",
+        (unsigned long)mm, (unsigned long)ss,
+        partido.goles[0], partido.goles[1],
+        estadoActivo, diff, total,
+        config.modoJuego == 0 ? "goles" : "tiempo");
 }

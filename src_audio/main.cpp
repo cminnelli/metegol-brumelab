@@ -70,28 +70,26 @@ void loop() {
     bool cur2 = digitalRead(PIN_SENSOR2);
 
 
-    // Cada sensor tiene su propio debounce independiente
-    if (millis() - ultimoGol1 >= 2000) {
-        if (cur1 == LOW && prev1 == HIGH) {
-            ultimoGol1 = millis();
-            partido.registrarGol(0);
+    // Sensores activos solo durante el partido
+    if (partido.activo) {
+        if (millis() - ultimoGol1 >= 2000) {
+            if (cur1 == LOW && prev1 == HIGH) {
+                ultimoGol1 = millis();
+                partido.registrarGol(0);
+            }
         }
-    }
-    if (millis() - ultimoGol2 >= 2000) {
-        if (cur2 == LOW && prev2 == HIGH) {
-            ultimoGol2 = millis();
-            partido.registrarGol(1);
+        if (millis() - ultimoGol2 >= 2000) {
+            if (cur2 == LOW && prev2 == HIGH) {
+                ultimoGol2 = millis();
+                partido.registrarGol(1);
+            }
         }
     }
 
-    if (config.modoJuego == 1) {
-        uint32_t durMs = (uint32_t)config.duracionMin * 60000UL;
-        static unsigned long ultimoAviso = 0;
-        if (millis() - ultimoAviso >= 10000) {
-            ultimoAviso = millis();
-            uint32_t restante = durMs - (millis() - partido.inicio);
-            Serial.printf("[JUEGO] Tiempo restante: %lu s\n", restante / 1000);
-        }
+    static unsigned long ultimoStats = 0;
+    if (millis() - ultimoStats >= (uint32_t)config.intervaloStats * 1000UL) {
+        ultimoStats = millis();
+        comentaristaStats(partido);
     }
 
     prev1 = cur1;

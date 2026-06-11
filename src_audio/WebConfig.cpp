@@ -63,28 +63,47 @@ static void cargarConfig() {
     config.velocidadScroll = prefs.getUChar("velScroll",  40);
     config.pistaAmbiente   = prefs.getUChar("pistaAmb",    3);
 
-    // Comentarista
-    config.intervaloComentarios     = prefs.getUShort("intervComent", 20);
-    config.goleadaDiff              = prefs.getUChar("goleadaDiff",    3);
-    config.calienteGoles            = prefs.getUChar("calienteGol",    4);
-    config.inicioSegs               = prefs.getUShort("inicioSegs",   60);
-    config.ultimoTramoPorc          = prefs.getUChar("ultiTramoPc",   10);
-    config.comentGol.desde          = prefs.getUChar("cGolD",           3);
-    config.comentGol.hasta          = prefs.getUChar("cGolH",           4);
-    config.comentInicio.desde       = prefs.getUChar("cInD",           1);
-    config.comentInicio.hasta       = prefs.getUChar("cInH",          10);
-    config.comentTranquilo.desde    = prefs.getUChar("cTrD",          11);
-    config.comentTranquilo.hasta    = prefs.getUChar("cTrH",          20);
-    config.comentParejo.desde       = prefs.getUChar("cPaD",          21);
-    config.comentParejo.hasta       = prefs.getUChar("cPaH",          30);
-    config.comentCaliente.desde     = prefs.getUChar("cCaD",          31);
-    config.comentCaliente.hasta     = prefs.getUChar("cCaH",          40);
-    config.comentGoleada.desde      = prefs.getUChar("cGoD",          41);
-    config.comentGoleada.hasta      = prefs.getUChar("cGoH",          50);
-    config.comentDefinido.desde     = prefs.getUChar("cDeD",          51);
-    config.comentDefinido.hasta     = prefs.getUChar("cDeH",          60);
-    config.comentUltimoTramo.desde  = prefs.getUChar("cUtD",          61);
-    config.comentUltimoTramo.hasta  = prefs.getUChar("cUtH",          70);
+    // Comentarista — thresholds
+    config.intervaloComentariosMin = prefs.getUShort("intervComMin",  10);
+    config.intervaloComentariosMax = prefs.getUShort("intervComMax",  30);
+    config.intervaloStats          = prefs.getUShort("intervStats",    4);
+    config.goleadaDiff             = prefs.getUChar("goleadaDiff",    3);
+    config.calienteGoles           = prefs.getUChar("calienteGol",    4);
+    config.inicioSegs              = prefs.getUShort("inicioSegs",   30);
+    config.primerosMinsSegs        = prefs.getUShort("primMinsSegs", 120);
+    config.ultimoTramoPorc         = prefs.getUChar("ultiTramoPc",   10);
+    // Comentarista — rangos por estado
+    config.comentInicio.desde       = prefs.getUChar("cInD",   1);
+    config.comentInicio.hasta       = prefs.getUChar("cInH",   6);
+    config.comentPrimerosMins.desde = prefs.getUChar("cPrD",   7);
+    config.comentPrimerosMins.hasta = prefs.getUChar("cPrH",  12);
+    config.comentParejo.desde       = prefs.getUChar("cPaD",  13);
+    config.comentParejo.hasta       = prefs.getUChar("cPaH",  18);
+    config.comentCaliente.desde     = prefs.getUChar("cCaD",  19);
+    config.comentCaliente.hasta     = prefs.getUChar("cCaH",  24);
+    config.comentGoleada.desde      = prefs.getUChar("cGoD",  25);
+    config.comentGoleada.hasta      = prefs.getUChar("cGoH",  30);
+    config.comentDefinido.desde     = prefs.getUChar("cDeD",  31);
+    config.comentDefinido.hasta     = prefs.getUChar("cDeH",  36);
+    config.comentUltimoTramo.desde  = prefs.getUChar("cUtD",  37);
+    config.comentUltimoTramo.hasta  = prefs.getUChar("cUtH",  42);
+    config.comentAburrido.desde     = prefs.getUChar("cAbD",  43);
+    config.comentAburrido.hasta     = prefs.getUChar("cAbH",  48);
+    config.comentTranquilo.desde    = prefs.getUChar("cTrD",  49);
+    config.comentTranquilo.hasta    = prefs.getUChar("cTrH",  54);
+    // Goles — rangos contextuales
+    config.golNormal.desde          = prefs.getUChar("gNorD", 55);
+    config.golNormal.hasta          = prefs.getUChar("gNorH", 58);
+    config.golEfusivo.desde         = prefs.getUChar("gEfD",  59);
+    config.golEfusivo.hasta         = prefs.getUChar("gEfH",  62);
+    config.golEmpate.desde          = prefs.getUChar("gEmD",  63);
+    config.golEmpate.hasta          = prefs.getUChar("gEmH",  66);
+    config.golCaliente.desde        = prefs.getUChar("gCaD",  67);
+    config.golCaliente.hasta        = prefs.getUChar("gCaH",  70);
+    config.golAgonico.desde         = prefs.getUChar("gAgD",  71);
+    config.golAgonico.hasta         = prefs.getUChar("gAgH",  73);
+    config.golAgonicoEmpate.desde   = prefs.getUChar("gAeD",  74);
+    config.golAgonicoEmpate.hasta   = prefs.getUChar("gAeH",  76);
     prefs.end();
 }
 
@@ -99,18 +118,20 @@ static void guardarConfig() {
     prefs.putUChar("velScroll", config.velocidadScroll);
     prefs.putUChar("pistaAmb",  config.pistaAmbiente);
 
-    // Comentarista
-    prefs.putUShort("intervComent", config.intervaloComentarios);
-    prefs.putUChar("goleadaDiff",   config.goleadaDiff);
-    prefs.putUChar("calienteGol",   config.calienteGoles);
-    prefs.putUShort("inicioSegs",   config.inicioSegs);
-    prefs.putUChar("ultiTramoPc",   config.ultimoTramoPorc);
-    prefs.putUChar("cGolD", config.comentGol.desde);
-    prefs.putUChar("cGolH", config.comentGol.hasta);
+    // Comentarista — thresholds
+    prefs.putUShort("intervComMin",  config.intervaloComentariosMin);
+    prefs.putUShort("intervComMax",  config.intervaloComentariosMax);
+    prefs.putUShort("intervStats",   config.intervaloStats);
+    prefs.putUChar("goleadaDiff",    config.goleadaDiff);
+    prefs.putUChar("calienteGol",    config.calienteGoles);
+    prefs.putUShort("inicioSegs",    config.inicioSegs);
+    prefs.putUShort("primMinsSegs",  config.primerosMinsSegs);
+    prefs.putUChar("ultiTramoPc",    config.ultimoTramoPorc);
+    // Comentarista — rangos estado
     prefs.putUChar("cInD",  config.comentInicio.desde);
     prefs.putUChar("cInH",  config.comentInicio.hasta);
-    prefs.putUChar("cTrD",  config.comentTranquilo.desde);
-    prefs.putUChar("cTrH",  config.comentTranquilo.hasta);
+    prefs.putUChar("cPrD",  config.comentPrimerosMins.desde);
+    prefs.putUChar("cPrH",  config.comentPrimerosMins.hasta);
     prefs.putUChar("cPaD",  config.comentParejo.desde);
     prefs.putUChar("cPaH",  config.comentParejo.hasta);
     prefs.putUChar("cCaD",  config.comentCaliente.desde);
@@ -121,6 +142,23 @@ static void guardarConfig() {
     prefs.putUChar("cDeH",  config.comentDefinido.hasta);
     prefs.putUChar("cUtD",  config.comentUltimoTramo.desde);
     prefs.putUChar("cUtH",  config.comentUltimoTramo.hasta);
+    prefs.putUChar("cAbD",  config.comentAburrido.desde);
+    prefs.putUChar("cAbH",  config.comentAburrido.hasta);
+    prefs.putUChar("cTrD",  config.comentTranquilo.desde);
+    prefs.putUChar("cTrH",  config.comentTranquilo.hasta);
+    // Goles — rangos contextuales
+    prefs.putUChar("gNorD", config.golNormal.desde);
+    prefs.putUChar("gNorH", config.golNormal.hasta);
+    prefs.putUChar("gEfD",  config.golEfusivo.desde);
+    prefs.putUChar("gEfH",  config.golEfusivo.hasta);
+    prefs.putUChar("gEmD",  config.golEmpate.desde);
+    prefs.putUChar("gEmH",  config.golEmpate.hasta);
+    prefs.putUChar("gCaD",  config.golCaliente.desde);
+    prefs.putUChar("gCaH",  config.golCaliente.hasta);
+    prefs.putUChar("gAgD",  config.golAgonico.desde);
+    prefs.putUChar("gAgH",  config.golAgonico.hasta);
+    prefs.putUChar("gAeD",  config.golAgonicoEmpate.desde);
+    prefs.putUChar("gAeH",  config.golAgonicoEmpate.hasta);
     prefs.end();
 }
 
@@ -280,11 +318,15 @@ static const char HTML[] PROGMEM = R"rawhtml(
 </header>
 
 <div style="max-width:900px;margin:0 auto 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;text-align:center">
-  <div style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Partido en curso</div>
-  <div id="marcador" style="font-size:3rem;font-weight:700;letter-spacing:6px;color:var(--accent)">0 - 0</div>
+  <div id="partido-label" style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">En espera</div>
+  <div id="marcador" style="font-size:3rem;font-weight:700;letter-spacing:6px;color:var(--accent)">- - -</div>
   <div id="timer-wrap" style="display:none;margin-top:10px">
     <div style="font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:2px">Tiempo restante</div>
     <div id="timer" style="font-size:1.8rem;font-weight:600;color:var(--muted)">--:--</div>
+  </div>
+  <div id="ganador-wrap" style="display:none;margin-top:8px;font-size:1rem;font-weight:600;color:var(--accent)"></div>
+  <div style="margin-top:14px">
+    <button id="btn-start" onclick="iniciarPartido()" style="padding:10px 32px;background:var(--accent);border:none;border-radius:20px;color:#000;font-weight:700;cursor:pointer;font-size:.9rem">Iniciar partido</button>
   </div>
 </div>
 
@@ -326,12 +368,12 @@ static const char HTML[] PROGMEM = R"rawhtml(
     </div>
     <div class="field" id="row-goles">
       <label>Goles para ganar <span id="gm">%GOLES_MAX%</span></label>
-      <input type="range" name="golesMax" min="1" max="10" value="%GOLES_MAX%"
+      <input type="range" name="golesMax" min="4" max="10" value="%GOLES_MAX%"
              oninput="document.getElementById('gm').textContent=this.value">
     </div>
     <div class="field" id="row-tiempo">
       <label>Duración (minutos) <span id="dm">%DUR_MIN%</span></label>
-      <input type="range" name="duracionMin" min="1" max="30" value="%DUR_MIN%"
+      <input type="range" name="duracionMin" min="3" max="8" value="%DUR_MIN%"
              oninput="document.getElementById('dm').textContent=this.value">
     </div>
   </div>
@@ -353,9 +395,19 @@ static const char HTML[] PROGMEM = R"rawhtml(
   <div class="card">
     <h2>💬 Comentarista</h2>
     <div class="field">
-      <label>Intervalo (segundos) <span id="ic">%INTERV_COM%</span></label>
-      <input type="range" name="intervaloComentarios" min="5" max="120" value="%INTERV_COM%"
-             oninput="document.getElementById('ic').textContent=this.value">
+      <label>Intervalo mínimo (seg) <span id="icn">%INTERV_COM_MIN%</span></label>
+      <input type="range" name="intervaloComentariosMin" min="5" max="120" value="%INTERV_COM_MIN%"
+             oninput="document.getElementById('icn').textContent=this.value">
+    </div>
+    <div class="field">
+      <label>Intervalo máximo (seg) <span id="icx">%INTERV_COM_MAX%</span></label>
+      <input type="range" name="intervaloComentariosMax" min="5" max="120" value="%INTERV_COM_MAX%"
+             oninput="document.getElementById('icx').textContent=this.value">
+    </div>
+    <div class="field">
+      <label>Intervalo stats serial (seg) <span id="ist">%INTERV_STATS%</span></label>
+      <input type="range" name="intervaloStats" min="3" max="30" value="%INTERV_STATS%"
+             oninput="document.getElementById('ist').textContent=this.value">
     </div>
     <div class="field">
       <label>Diff. goles para goleada <span id="gd">%GOLEADA_DIFF%</span></label>
@@ -369,8 +421,13 @@ static const char HTML[] PROGMEM = R"rawhtml(
     </div>
     <div class="field">
       <label>Segundos fase inicio <span id="ise">%INICIO_SEGS%</span></label>
-      <input type="range" name="inicioSegs" min="10" max="300" value="%INICIO_SEGS%"
+      <input type="range" name="inicioSegs" min="5" max="120" value="%INICIO_SEGS%"
              oninput="document.getElementById('ise').textContent=this.value">
+    </div>
+    <div class="field">
+      <label>Segundos primeros minutos <span id="pms">%PRIM_MINS_SEGS%</span></label>
+      <input type="range" name="primerosMinsSegs" min="30" max="300" value="%PRIM_MINS_SEGS%"
+             oninput="document.getElementById('pms').textContent=this.value">
     </div>
     <div class="field">
       <label>% tiempo para último tramo <span id="utp">%ULTI_TRAMO%</span></label>
@@ -381,40 +438,61 @@ static const char HTML[] PROGMEM = R"rawhtml(
 
   <div class="card">
     <h2>🎵 Rangos de Audio</h2>
-    <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Índice de ítem por estado (futuro: pista MP3)</p>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Pistas MP3 por estado del partido</p>
     <table style="width:100%;border-collapse:collapse;font-size:.82rem">
-      <thead>
-        <tr style="color:var(--muted)">
-          <th style="text-align:left;padding:4px 0;font-weight:500">Estado</th>
-          <th style="padding:4px 8px;font-weight:500">Desde</th>
-          <th style="padding:4px 8px;font-weight:500">Hasta</th>
-        </tr>
-      </thead>
+      <thead><tr style="color:var(--muted)">
+        <th style="text-align:left;padding:4px 0;font-weight:500">Estado / Gol</th>
+        <th style="padding:4px 8px;font-weight:500">Desde</th>
+        <th style="padding:4px 8px;font-weight:500">Hasta</th>
+      </tr></thead>
       <tbody>
-        <tr><td style="padding:5px 0;color:var(--accent2)"><b>gol</b> ⚽</td>
-          <td style="padding:3px 8px"><input type="number" name="cGolD" min="0" max="255" value="%C_GOL_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cGolH" min="0" max="255" value="%C_GOL_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:5px 0;color:var(--text)">inicio</td>
+        <tr><td colspan="3" style="padding:6px 0 2px;color:var(--muted);font-size:.75rem;letter-spacing:1px">COMENTARIOS</td></tr>
+        <tr><td style="padding:4px 0">inicio</td>
           <td style="padding:3px 8px"><input type="number" name="cInD" min="0" max="255" value="%C_IN_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
           <td style="padding:3px 8px"><input type="number" name="cInH" min="0" max="255" value="%C_IN_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:5px 0;color:var(--text)">tranquilo</td>
-          <td style="padding:3px 8px"><input type="number" name="cTrD" min="0" max="255" value="%C_TR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cTrH" min="0" max="255" value="%C_TR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:5px 0;color:var(--text)">parejo</td>
+        <tr><td style="padding:4px 0">primeros_minutos</td>
+          <td style="padding:3px 8px"><input type="number" name="cPrD" min="0" max="255" value="%C_PR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cPrH" min="0" max="255" value="%C_PR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0">parejo</td>
           <td style="padding:3px 8px"><input type="number" name="cPaD" min="0" max="255" value="%C_PA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
           <td style="padding:3px 8px"><input type="number" name="cPaH" min="0" max="255" value="%C_PA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:5px 0;color:var(--text)">caliente</td>
+        <tr><td style="padding:4px 0">caliente</td>
           <td style="padding:3px 8px"><input type="number" name="cCaD" min="0" max="255" value="%C_CA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
           <td style="padding:3px 8px"><input type="number" name="cCaH" min="0" max="255" value="%C_CA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:5px 0;color:var(--text)">goleada</td>
+        <tr><td style="padding:4px 0">goleada</td>
           <td style="padding:3px 8px"><input type="number" name="cGoD" min="0" max="255" value="%C_GO_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
           <td style="padding:3px 8px"><input type="number" name="cGoH" min="0" max="255" value="%C_GO_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:5px 0;color:var(--text)">definido</td>
+        <tr><td style="padding:4px 0">definido</td>
           <td style="padding:3px 8px"><input type="number" name="cDeD" min="0" max="255" value="%C_DE_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
           <td style="padding:3px 8px"><input type="number" name="cDeH" min="0" max="255" value="%C_DE_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:5px 0;color:var(--text)">ultimo_tramo</td>
+        <tr><td style="padding:4px 0">ultimo_tramo</td>
           <td style="padding:3px 8px"><input type="number" name="cUtD" min="0" max="255" value="%C_UT_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
           <td style="padding:3px 8px"><input type="number" name="cUtH" min="0" max="255" value="%C_UT_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0">aburrido</td>
+          <td style="padding:3px 8px"><input type="number" name="cAbD" min="0" max="255" value="%C_AB_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cAbH" min="0" max="255" value="%C_AB_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0">tranquilo</td>
+          <td style="padding:3px 8px"><input type="number" name="cTrD" min="0" max="255" value="%C_TR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="cTrH" min="0" max="255" value="%C_TR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td colspan="3" style="padding:10px 0 2px;color:var(--muted);font-size:.75rem;letter-spacing:1px">GOLES ⚽</td></tr>
+        <tr><td style="padding:4px 0;color:var(--accent2)">gol_normal</td>
+          <td style="padding:3px 8px"><input type="number" name="gNorD" min="0" max="255" value="%G_NOR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="gNorH" min="0" max="255" value="%G_NOR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0;color:var(--accent2)">gol_efusivo</td>
+          <td style="padding:3px 8px"><input type="number" name="gEfD" min="0" max="255" value="%G_EF_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="gEfH" min="0" max="255" value="%G_EF_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0;color:var(--accent2)">gol_empate</td>
+          <td style="padding:3px 8px"><input type="number" name="gEmD" min="0" max="255" value="%G_EM_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="gEmH" min="0" max="255" value="%G_EM_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0;color:var(--accent2)">gol_caliente</td>
+          <td style="padding:3px 8px"><input type="number" name="gCaD" min="0" max="255" value="%G_CA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="gCaH" min="0" max="255" value="%G_CA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0;color:var(--accent2)">gol_agonico</td>
+          <td style="padding:3px 8px"><input type="number" name="gAgD" min="0" max="255" value="%G_AG_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="gAgH" min="0" max="255" value="%G_AG_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td style="padding:4px 0;color:var(--accent2)">gol_agonico_empate</td>
+          <td style="padding:3px 8px"><input type="number" name="gAeD" min="0" max="255" value="%G_AE_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
+          <td style="padding:3px 8px"><input type="number" name="gAeH" min="0" max="255" value="%G_AE_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
       </tbody>
     </table>
   </div>
@@ -574,19 +652,46 @@ static const char HTML[] PROGMEM = R"rawhtml(
 
   function actualizarMarcador() {
     fetch('/estado').then(r=>r.json()).then(d=>{
-      document.getElementById('marcador').textContent = d.marcador || '0 - 0';
-      const tw = document.getElementById('timer-wrap');
-      if (d.modo === 1) {
-        tw.style.display = 'block';
-        const s = d.tiempoRestante || 0;
-        const mm = String(Math.floor(s/60)).padStart(2,'0');
-        const ss = String(s%60).padStart(2,'0');
-        document.getElementById('timer').textContent = mm + ':' + ss;
-      } else {
+      const lbl = document.getElementById('partido-label');
+      const gw  = document.getElementById('ganador-wrap');
+      const btn = document.getElementById('btn-start');
+      const tw  = document.getElementById('timer-wrap');
+
+      if (d.activo) {
+        lbl.textContent = 'Partido en curso';
+        document.getElementById('marcador').textContent = d.marcador || '0 - 0';
+        gw.style.display = 'none';
+        btn.textContent = 'Reiniciar';
+        if (d.modo === 1 && d.tiempoRestante > 0) {
+          tw.style.display = 'block';
+          const s = d.tiempoRestante;
+          document.getElementById('timer').textContent =
+            String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+        } else {
+          tw.style.display = 'none';
+        }
+      } else if (d.terminado) {
+        lbl.textContent = 'Partido finalizado';
+        document.getElementById('marcador').textContent = d.marcador || '0 - 0';
         tw.style.display = 'none';
+        const g = d.goles || [0,0];
+        gw.style.display = 'block';
+        gw.textContent = g[0] > g[1] ? '¡Ganó equipo 1!' : g[1] > g[0] ? '¡Ganó equipo 2!' : '¡Empate!';
+        btn.textContent = 'Nuevo partido';
+      } else {
+        lbl.textContent = 'En espera';
+        document.getElementById('marcador').textContent = '- - -';
+        tw.style.display = 'none';
+        gw.style.display = 'none';
+        btn.textContent = 'Iniciar partido';
       }
     }).catch(()=>{});
   }
+
+  function iniciarPartido() {
+    fetch('/start', {method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});
+  }
+
   actualizarMarcador();
   setInterval(actualizarMarcador, 3000);
 
@@ -623,18 +728,20 @@ static String buildPage() {
     html.replace("%BRILLO%",     String(config.brillo));
     html.replace("%VEL_SCROLL%", String(config.velocidadScroll));
     // Comentarista — thresholds
-    html.replace("%INTERV_COM%",  String(config.intervaloComentarios));
+    html.replace("%INTERV_COM_MIN%", String(config.intervaloComentariosMin));
+    html.replace("%INTERV_COM_MAX%", String(config.intervaloComentariosMax));
+    html.replace("%INTERV_STATS%",   String(config.intervaloStats));
     html.replace("%GOLEADA_DIFF%",String(config.goleadaDiff));
     html.replace("%CALIENTE_GOL%",String(config.calienteGoles));
     html.replace("%INICIO_SEGS%", String(config.inicioSegs));
     html.replace("%ULTI_TRAMO%",  String(config.ultimoTramoPorc));
-    // Comentarista — rangos
-    html.replace("%C_GOL_D%", String(config.comentGol.desde));
-    html.replace("%C_GOL_H%", String(config.comentGol.hasta));
+    // También agrego primerosMinsSegs al slider (si hay un placeholder en el HTML)
+    html.replace("%PRIM_MINS_SEGS%", String(config.primerosMinsSegs));
+    // Comentarista — rangos estado
     html.replace("%C_IN_D%", String(config.comentInicio.desde));
     html.replace("%C_IN_H%", String(config.comentInicio.hasta));
-    html.replace("%C_TR_D%", String(config.comentTranquilo.desde));
-    html.replace("%C_TR_H%", String(config.comentTranquilo.hasta));
+    html.replace("%C_PR_D%", String(config.comentPrimerosMins.desde));
+    html.replace("%C_PR_H%", String(config.comentPrimerosMins.hasta));
     html.replace("%C_PA_D%", String(config.comentParejo.desde));
     html.replace("%C_PA_H%", String(config.comentParejo.hasta));
     html.replace("%C_CA_D%", String(config.comentCaliente.desde));
@@ -645,6 +752,23 @@ static String buildPage() {
     html.replace("%C_DE_H%", String(config.comentDefinido.hasta));
     html.replace("%C_UT_D%", String(config.comentUltimoTramo.desde));
     html.replace("%C_UT_H%", String(config.comentUltimoTramo.hasta));
+    html.replace("%C_AB_D%", String(config.comentAburrido.desde));
+    html.replace("%C_AB_H%", String(config.comentAburrido.hasta));
+    html.replace("%C_TR_D%", String(config.comentTranquilo.desde));
+    html.replace("%C_TR_H%", String(config.comentTranquilo.hasta));
+    // Goles — rangos contextuales
+    html.replace("%G_NOR_D%", String(config.golNormal.desde));
+    html.replace("%G_NOR_H%", String(config.golNormal.hasta));
+    html.replace("%G_EF_D%",  String(config.golEfusivo.desde));
+    html.replace("%G_EF_H%",  String(config.golEfusivo.hasta));
+    html.replace("%G_EM_D%",  String(config.golEmpate.desde));
+    html.replace("%G_EM_H%",  String(config.golEmpate.hasta));
+    html.replace("%G_CA_D%",  String(config.golCaliente.desde));
+    html.replace("%G_CA_H%",  String(config.golCaliente.hasta));
+    html.replace("%G_AG_D%",  String(config.golAgonico.desde));
+    html.replace("%G_AG_H%",  String(config.golAgonico.hasta));
+    html.replace("%G_AE_D%",  String(config.golAgonicoEmpate.desde));
+    html.replace("%G_AE_H%",  String(config.golAgonicoEmpate.hasta));
     return html;
 }
 
@@ -656,34 +780,52 @@ static void handleSave() {
     if (server.hasArg("volumenVoz"))      config.volumenVoz      = server.arg("volumenVoz").toInt();
     if (server.hasArg("volumenAmbiente")) config.volumenAmbiente = server.arg("volumenAmbiente").toInt();
     if (server.hasArg("modoJuego"))       config.modoJuego       = server.arg("modoJuego").toInt();
-    if (server.hasArg("golesMax"))        config.golesMax        = server.arg("golesMax").toInt();
-    if (server.hasArg("duracionMin"))     config.duracionMin     = server.arg("duracionMin").toInt();
+    if (server.hasArg("golesMax"))        config.golesMax        = constrain(server.arg("golesMax").toInt(), 4, 10);
+    if (server.hasArg("duracionMin"))     config.duracionMin     = constrain(server.arg("duracionMin").toInt(), 3, 8);
     if (server.hasArg("brillo"))          config.brillo          = server.arg("brillo").toInt();
     if (server.hasArg("velocidadScroll")) config.velocidadScroll = server.arg("velocidadScroll").toInt();
     if (server.hasArg("pistaAmbiente"))   config.pistaAmbiente   = server.arg("pistaAmbiente").toInt();
     // Comentarista — thresholds
-    if (server.hasArg("intervaloComentarios")) config.intervaloComentarios = server.arg("intervaloComentarios").toInt();
+    if (server.hasArg("intervaloComentariosMin")) config.intervaloComentariosMin = server.arg("intervaloComentariosMin").toInt();
+    if (server.hasArg("intervaloComentariosMax")) config.intervaloComentariosMax = server.arg("intervaloComentariosMax").toInt();
+    if (server.hasArg("intervaloStats"))          config.intervaloStats          = constrain(server.arg("intervaloStats").toInt(), 3, 30);
     if (server.hasArg("goleadaDiff"))          config.goleadaDiff          = server.arg("goleadaDiff").toInt();
     if (server.hasArg("calienteGoles"))        config.calienteGoles        = server.arg("calienteGoles").toInt();
     if (server.hasArg("inicioSegs"))           config.inicioSegs           = server.arg("inicioSegs").toInt();
+    if (server.hasArg("primerosMinsSegs"))     config.primerosMinsSegs     = server.arg("primerosMinsSegs").toInt();
     if (server.hasArg("ultimoTramoPorc"))      config.ultimoTramoPorc      = server.arg("ultimoTramoPorc").toInt();
-    // Comentarista — rangos
-    if (server.hasArg("cGolD")) config.comentGol.desde          = server.arg("cGolD").toInt();
-    if (server.hasArg("cGolH")) config.comentGol.hasta          = server.arg("cGolH").toInt();
-    if (server.hasArg("cInD")) config.comentInicio.desde        = server.arg("cInD").toInt();
-    if (server.hasArg("cInH")) config.comentInicio.hasta       = server.arg("cInH").toInt();
-    if (server.hasArg("cTrD")) config.comentTranquilo.desde    = server.arg("cTrD").toInt();
-    if (server.hasArg("cTrH")) config.comentTranquilo.hasta    = server.arg("cTrH").toInt();
-    if (server.hasArg("cPaD")) config.comentParejo.desde       = server.arg("cPaD").toInt();
-    if (server.hasArg("cPaH")) config.comentParejo.hasta       = server.arg("cPaH").toInt();
-    if (server.hasArg("cCaD")) config.comentCaliente.desde     = server.arg("cCaD").toInt();
-    if (server.hasArg("cCaH")) config.comentCaliente.hasta     = server.arg("cCaH").toInt();
-    if (server.hasArg("cGoD")) config.comentGoleada.desde      = server.arg("cGoD").toInt();
-    if (server.hasArg("cGoH")) config.comentGoleada.hasta      = server.arg("cGoH").toInt();
-    if (server.hasArg("cDeD")) config.comentDefinido.desde     = server.arg("cDeD").toInt();
-    if (server.hasArg("cDeH")) config.comentDefinido.hasta     = server.arg("cDeH").toInt();
-    if (server.hasArg("cUtD")) config.comentUltimoTramo.desde  = server.arg("cUtD").toInt();
-    if (server.hasArg("cUtH")) config.comentUltimoTramo.hasta  = server.arg("cUtH").toInt();
+    // Comentarista — rangos estado
+    if (server.hasArg("cInD")) config.comentInicio.desde          = server.arg("cInD").toInt();
+    if (server.hasArg("cInH")) config.comentInicio.hasta          = server.arg("cInH").toInt();
+    if (server.hasArg("cPrD")) config.comentPrimerosMins.desde    = server.arg("cPrD").toInt();
+    if (server.hasArg("cPrH")) config.comentPrimerosMins.hasta    = server.arg("cPrH").toInt();
+    if (server.hasArg("cPaD")) config.comentParejo.desde          = server.arg("cPaD").toInt();
+    if (server.hasArg("cPaH")) config.comentParejo.hasta          = server.arg("cPaH").toInt();
+    if (server.hasArg("cCaD")) config.comentCaliente.desde        = server.arg("cCaD").toInt();
+    if (server.hasArg("cCaH")) config.comentCaliente.hasta        = server.arg("cCaH").toInt();
+    if (server.hasArg("cGoD")) config.comentGoleada.desde         = server.arg("cGoD").toInt();
+    if (server.hasArg("cGoH")) config.comentGoleada.hasta         = server.arg("cGoH").toInt();
+    if (server.hasArg("cDeD")) config.comentDefinido.desde        = server.arg("cDeD").toInt();
+    if (server.hasArg("cDeH")) config.comentDefinido.hasta        = server.arg("cDeH").toInt();
+    if (server.hasArg("cUtD")) config.comentUltimoTramo.desde     = server.arg("cUtD").toInt();
+    if (server.hasArg("cUtH")) config.comentUltimoTramo.hasta     = server.arg("cUtH").toInt();
+    if (server.hasArg("cAbD")) config.comentAburrido.desde        = server.arg("cAbD").toInt();
+    if (server.hasArg("cAbH")) config.comentAburrido.hasta        = server.arg("cAbH").toInt();
+    if (server.hasArg("cTrD")) config.comentTranquilo.desde       = server.arg("cTrD").toInt();
+    if (server.hasArg("cTrH")) config.comentTranquilo.hasta       = server.arg("cTrH").toInt();
+    // Goles — rangos contextuales
+    if (server.hasArg("gNorD")) config.golNormal.desde            = server.arg("gNorD").toInt();
+    if (server.hasArg("gNorH")) config.golNormal.hasta            = server.arg("gNorH").toInt();
+    if (server.hasArg("gEfD"))  config.golEfusivo.desde           = server.arg("gEfD").toInt();
+    if (server.hasArg("gEfH"))  config.golEfusivo.hasta           = server.arg("gEfH").toInt();
+    if (server.hasArg("gEmD"))  config.golEmpate.desde            = server.arg("gEmD").toInt();
+    if (server.hasArg("gEmH"))  config.golEmpate.hasta            = server.arg("gEmH").toInt();
+    if (server.hasArg("gCaD"))  config.golCaliente.desde          = server.arg("gCaD").toInt();
+    if (server.hasArg("gCaH"))  config.golCaliente.hasta          = server.arg("gCaH").toInt();
+    if (server.hasArg("gAgD"))  config.golAgonico.desde           = server.arg("gAgD").toInt();
+    if (server.hasArg("gAgH"))  config.golAgonico.hasta           = server.arg("gAgH").toInt();
+    if (server.hasArg("gAeD"))  config.golAgonicoEmpate.desde     = server.arg("gAeD").toInt();
+    if (server.hasArg("gAeH"))  config.golAgonicoEmpate.hasta     = server.arg("gAeH").toInt();
 
     guardarConfig();
     _pendingVolUpdate = true;  // aplica volumen en el próximo loop, no aquí
@@ -694,7 +836,7 @@ static void handleSave() {
 }
 
 static void handleEstado() {
-    char buf[128];
+    char buf[160];
     if (_partido) {
         char marcador[16];
         _partido->getResultado(marcador, sizeof(marcador));
@@ -703,49 +845,74 @@ static void handleEstado() {
         uint32_t restante = (config.modoJuego == 1 && elapsed < durMs)
                             ? (durMs - elapsed) / 1000 : 0;
         snprintf(buf, sizeof(buf),
-            "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,\"tiempoRestante\":%lu}",
+            "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,"
+            "\"tiempoRestante\":%lu,\"activo\":%s,\"terminado\":%s}",
             _partido->goles[0], _partido->goles[1], marcador, config.modoJuego,
-            (unsigned long)restante);
+            (unsigned long)restante,
+            _partido->activo    ? "true" : "false",
+            _partido->terminado ? "true" : "false");
     } else {
         snprintf(buf, sizeof(buf),
-            "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,\"tiempoRestante\":0}",
+            "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,"
+            "\"tiempoRestante\":0,\"activo\":false,\"terminado\":false}",
             config.modoJuego);
     }
     server.send(200, "application/json", buf);
 }
 
+static void handleStart() {
+    if (_partido) {
+        _partido->resetear();
+        _partido->activo    = true;
+        _partido->terminado = false;
+        Serial.println("[JUEGO] ¡Partido iniciado!");
+    }
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handleConfigBrumeGet() {
-    static char buf[640];
+    static char buf[900];
     snprintf(buf, sizeof(buf),
         "{"
-        "\"intervaloComentarios\":%d,"
-        "\"reglas\":{"
-          "\"goleadaDiff\":%d,"
-          "\"calienteGoles\":%d,"
-          "\"inicioSegs\":%d,"
-          "\"ultimoTramoPorc\":%d"
-        "},"
+        "\"intervaloComentariosMin\":%d,\"intervaloComentariosMax\":%d,\"intervaloStats\":%d,"
+        "\"reglas\":{\"goleadaDiff\":%d,\"calienteGoles\":%d,"
+          "\"inicioSegs\":%d,\"primerosMinsSegs\":%d,\"ultimoTramoPorc\":%d},"
         "\"comentarios\":{"
-          "\"gol\":{\"desde\":%d,\"hasta\":%d},"
           "\"inicio\":{\"desde\":%d,\"hasta\":%d},"
-          "\"tranquilo\":{\"desde\":%d,\"hasta\":%d},"
+          "\"primeros_minutos\":{\"desde\":%d,\"hasta\":%d},"
           "\"parejo\":{\"desde\":%d,\"hasta\":%d},"
           "\"caliente\":{\"desde\":%d,\"hasta\":%d},"
           "\"goleada\":{\"desde\":%d,\"hasta\":%d},"
           "\"definido\":{\"desde\":%d,\"hasta\":%d},"
-          "\"ultimo_tramo\":{\"desde\":%d,\"hasta\":%d}"
-        "}}",
-        config.intervaloComentarios,
+          "\"ultimo_tramo\":{\"desde\":%d,\"hasta\":%d},"
+          "\"aburrido\":{\"desde\":%d,\"hasta\":%d},"
+          "\"tranquilo\":{\"desde\":%d,\"hasta\":%d}},"
+        "\"goles\":{"
+          "\"normal\":{\"desde\":%d,\"hasta\":%d},"
+          "\"efusivo\":{\"desde\":%d,\"hasta\":%d},"
+          "\"empate\":{\"desde\":%d,\"hasta\":%d},"
+          "\"caliente\":{\"desde\":%d,\"hasta\":%d},"
+          "\"agonico\":{\"desde\":%d,\"hasta\":%d},"
+          "\"agonico_empate\":{\"desde\":%d,\"hasta\":%d}}"
+        "}",
+        config.intervaloComentariosMin, config.intervaloComentariosMax, config.intervaloStats,
         config.goleadaDiff, config.calienteGoles,
-        config.inicioSegs, config.ultimoTramoPorc,
-        config.comentGol.desde,         config.comentGol.hasta,
-        config.comentInicio.desde,      config.comentInicio.hasta,
-        config.comentTranquilo.desde,   config.comentTranquilo.hasta,
-        config.comentParejo.desde,      config.comentParejo.hasta,
-        config.comentCaliente.desde,    config.comentCaliente.hasta,
-        config.comentGoleada.desde,     config.comentGoleada.hasta,
-        config.comentDefinido.desde,    config.comentDefinido.hasta,
-        config.comentUltimoTramo.desde, config.comentUltimoTramo.hasta
+        config.inicioSegs, config.primerosMinsSegs, config.ultimoTramoPorc,
+        config.comentInicio.desde,        config.comentInicio.hasta,
+        config.comentPrimerosMins.desde,  config.comentPrimerosMins.hasta,
+        config.comentParejo.desde,        config.comentParejo.hasta,
+        config.comentCaliente.desde,      config.comentCaliente.hasta,
+        config.comentGoleada.desde,       config.comentGoleada.hasta,
+        config.comentDefinido.desde,      config.comentDefinido.hasta,
+        config.comentUltimoTramo.desde,   config.comentUltimoTramo.hasta,
+        config.comentAburrido.desde,      config.comentAburrido.hasta,
+        config.comentTranquilo.desde,     config.comentTranquilo.hasta,
+        config.golNormal.desde,           config.golNormal.hasta,
+        config.golEfusivo.desde,          config.golEfusivo.hasta,
+        config.golEmpate.desde,           config.golEmpate.hasta,
+        config.golCaliente.desde,         config.golCaliente.hasta,
+        config.golAgonico.desde,          config.golAgonico.hasta,
+        config.golAgonicoEmpate.desde,    config.golAgonicoEmpate.hasta
     );
     server.send(200, "application/json", buf);
 }
@@ -786,6 +953,7 @@ void webConfigInit(Partido* p) {
     server.on("/", HTTP_GET, handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.on("/estado", HTTP_GET, handleEstado);
+    server.on("/start",  HTTP_POST, handleStart);
     server.on("/configBrume", HTTP_GET, handleConfigBrumeGet);
 
     server.on("/wifiStatus", HTTP_GET, [](){

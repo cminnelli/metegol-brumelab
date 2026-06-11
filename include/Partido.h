@@ -5,8 +5,10 @@
 
 class Partido {
 public:
-    uint8_t goles[2] = {0, 0};
-    uint32_t inicio  = 0;
+    uint8_t  goles[2]  = {0, 0};
+    uint32_t inicio    = 0;
+    bool     activo    = false;
+    bool     terminado = false;
 
     void    sumarGol(uint8_t equipo);
     void    resetear();
