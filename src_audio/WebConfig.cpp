@@ -1,6 +1,7 @@
 #include "WebConfig.h"
 #include "AudioVoz.h"
 #include "AudioAmbiente.h"
+#include "Comentarista.h"
 #include <Arduino.h>
 
 static Partido* _partido = nullptr;
@@ -320,9 +321,19 @@ static const char HTML[] PROGMEM = R"rawhtml(
 <div style="max-width:900px;margin:0 auto 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;text-align:center">
   <div id="partido-label" style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">En espera</div>
   <div id="marcador" style="font-size:3rem;font-weight:700;letter-spacing:6px;color:var(--accent)">- - -</div>
-  <div id="timer-wrap" style="display:none;margin-top:10px">
-    <div style="font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:2px">Tiempo restante</div>
-    <div id="timer" style="font-size:1.8rem;font-weight:600;color:var(--muted)">--:--</div>
+  <div id="stats-wrap" style="display:none;margin-top:10px;display:flex;justify-content:center;gap:24px;flex-wrap:wrap">
+    <div style="text-align:center">
+      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted)">Tiempo</div>
+      <div id="tiempo-juego" style="font-size:1.2rem;font-weight:600;color:var(--text)">00:00</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted)">Estado</div>
+      <div id="estado-partido" style="font-size:1.2rem;font-weight:600;color:var(--accent2)">-</div>
+    </div>
+    <div id="timer-wrap" style="text-align:center;display:none">
+      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted)">Restante</div>
+      <div id="timer" style="font-size:1.2rem;font-weight:600;color:var(--muted)">--:--</div>
+    </div>
   </div>
   <div id="ganador-wrap" style="display:none;margin-top:8px;font-size:1rem;font-weight:600;color:var(--accent)"></div>
   <div style="margin-top:14px">
@@ -650,18 +661,29 @@ static const char HTML[] PROGMEM = R"rawhtml(
     );
   }
 
+  const estadoLabel = {
+    inicio:'Inicio', primeros_min:'Primeros min.', parejo:'Parejo',
+    caliente:'Caliente 🔥', goleada:'Goleada', definido:'Definido',
+    ultimo_tramo:'Último tramo ⚡', aburrido:'Aburrido', tranquilo:'Tranquilo',
+    en_espera:'En espera', terminado:'Finalizado'
+  };
+
   function actualizarMarcador() {
     fetch('/estado').then(r=>r.json()).then(d=>{
       const lbl = document.getElementById('partido-label');
       const gw  = document.getElementById('ganador-wrap');
       const btn = document.getElementById('btn-start');
       const tw  = document.getElementById('timer-wrap');
+      const sw  = document.getElementById('stats-wrap');
 
       if (d.activo) {
         lbl.textContent = 'Partido en curso';
         document.getElementById('marcador').textContent = d.marcador || '0 - 0';
+        sw.style.display = 'flex';
         gw.style.display = 'none';
         btn.textContent = 'Reiniciar';
+        document.getElementById('tiempo-juego').textContent = d.tiempoJuego || '00:00';
+        document.getElementById('estado-partido').textContent = estadoLabel[d.estado] || d.estado;
         if (d.modo === 1 && d.tiempoRestante > 0) {
           tw.style.display = 'block';
           const s = d.tiempoRestante;
@@ -673,6 +695,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
       } else if (d.terminado) {
         lbl.textContent = 'Partido finalizado';
         document.getElementById('marcador').textContent = d.marcador || '0 - 0';
+        sw.style.display = 'none';
         tw.style.display = 'none';
         const g = d.goles || [0,0];
         gw.style.display = 'block';
@@ -681,6 +704,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
       } else {
         lbl.textContent = 'En espera';
         document.getElementById('marcador').textContent = '- - -';
+        sw.style.display = 'none';
         tw.style.display = 'none';
         gw.style.display = 'none';
         btn.textContent = 'Iniciar partido';
@@ -836,7 +860,7 @@ static void handleSave() {
 }
 
 static void handleEstado() {
-    char buf[160];
+    char buf[200];
     if (_partido) {
         char marcador[16];
         _partido->getResultado(marcador, sizeof(marcador));
@@ -844,17 +868,22 @@ static void handleEstado() {
         uint32_t durMs    = (uint32_t)config.duracionMin * 60000UL;
         uint32_t restante = (config.modoJuego == 1 && elapsed < durMs)
                             ? (durMs - elapsed) / 1000 : 0;
+        uint32_t mm = elapsed / 60000, ss = (elapsed % 60000) / 1000;
+        char tiempo[8]; snprintf(tiempo, sizeof(tiempo), "%02lu:%02lu", (unsigned long)mm, (unsigned long)ss);
+        const char* estado = comentaristaGetEstado(*_partido);
         snprintf(buf, sizeof(buf),
             "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,"
-            "\"tiempoRestante\":%lu,\"activo\":%s,\"terminado\":%s}",
+            "\"tiempoRestante\":%lu,\"tiempoJuego\":\"%s\","
+            "\"estado\":\"%s\",\"activo\":%s,\"terminado\":%s}",
             _partido->goles[0], _partido->goles[1], marcador, config.modoJuego,
-            (unsigned long)restante,
+            (unsigned long)restante, tiempo, estado,
             _partido->activo    ? "true" : "false",
             _partido->terminado ? "true" : "false");
     } else {
         snprintf(buf, sizeof(buf),
             "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,"
-            "\"tiempoRestante\":0,\"activo\":false,\"terminado\":false}",
+            "\"tiempoRestante\":0,\"tiempoJuego\":\"00:00\","
+            "\"estado\":\"en_espera\",\"activo\":false,\"terminado\":false}",
             config.modoJuego);
     }
     server.send(200, "application/json", buf);

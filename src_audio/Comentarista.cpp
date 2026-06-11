@@ -139,6 +139,11 @@ void comentaristaOnGol(const Partido& partido) {
     _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
 }
 
+const char* comentaristaGetEstado(const Partido& partido) {
+    if (!partido.activo) return partido.terminado ? "terminado" : "en_espera";
+    return nombreEstado(determinarEstado(partido));
+}
+
 void comentaristaStats(const Partido& partido) {
     uint32_t elapsed = millis() - partido.inicio;
     uint32_t mm      = elapsed / 60000;
