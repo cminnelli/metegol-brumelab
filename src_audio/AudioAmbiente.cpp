@@ -44,6 +44,12 @@ void ambientePoll() {
             uint8_t tipo = buf[3], val = buf[6];
             switch (tipo) {
                 case 0x3F: Serial.println("[SP2] SD online ✓"); break;
+                case 0x3D:
+                    // fallback: si 0x19 no pegó después de un reset del ESP32, la pista terminó → relanzar
+                    Serial.printf("[SP2] Pista terminada → reloop pista %d\n", _pistaActual);
+                    cmd(0x03, 0x00, _pistaActual);
+                    cmd(0x19, 0x00, 0x00);
+                    break;
                 case 0x40: if (val != 0x03) Serial.printf("[SP2] ✗ Error 0x%02X\n", val); break;
                 default: break;
             }

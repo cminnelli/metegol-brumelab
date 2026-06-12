@@ -15,8 +15,8 @@ Partido partido;
 void setup() {
     Serial.begin(115200);
     Serial.println("[1] Serial OK");
-
-    webConfigInit(&partido);  // carga config desde NVS + inicia AP WiFi
+    webConfigInit(&partido);  // carga config desde NVS + inicia AP WiFi (activa RF → entropía real)
+    randomSeed(esp_random() ^ (uint32_t)micros());
 
     Serial.println("=== CONFIG CARGADA ===");
     Serial.printf("  Volumen (voz)     : %d\n", config.volumenVoz);

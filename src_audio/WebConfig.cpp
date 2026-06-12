@@ -321,7 +321,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
 <div style="max-width:900px;margin:0 auto 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;text-align:center">
   <div id="partido-label" style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">En espera</div>
   <div id="marcador" style="font-size:3rem;font-weight:700;letter-spacing:6px;color:var(--accent)">- - -</div>
-  <div id="stats-wrap" style="display:none;margin-top:10px;display:flex;justify-content:center;gap:24px;flex-wrap:wrap">
+  <div id="stats-wrap" style="display:none;margin-top:10px;justify-content:center;gap:24px;flex-wrap:wrap">
     <div style="text-align:center">
       <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted)">Tiempo</div>
       <div id="tiempo-juego" style="font-size:1.2rem;font-weight:600;color:var(--text)">00:00</div>
@@ -336,8 +336,9 @@ static const char HTML[] PROGMEM = R"rawhtml(
     </div>
   </div>
   <div id="ganador-wrap" style="display:none;margin-top:8px;font-size:1rem;font-weight:600;color:var(--accent)"></div>
-  <div style="margin-top:14px">
+  <div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
     <button id="btn-start" onclick="iniciarPartido()" style="padding:10px 32px;background:var(--accent);border:none;border-radius:20px;color:#000;font-weight:700;cursor:pointer;font-size:.9rem">Iniciar partido</button>
+    <button id="btn-stop" onclick="pararPartido()" style="display:none;padding:10px 32px;background:#c0392b;border:none;border-radius:20px;color:#fff;font-weight:700;cursor:pointer;font-size:.9rem">Parar partido</button>
   </div>
 </div>
 
@@ -670,18 +671,20 @@ static const char HTML[] PROGMEM = R"rawhtml(
 
   function actualizarMarcador() {
     fetch('/estado').then(r=>r.json()).then(d=>{
-      const lbl = document.getElementById('partido-label');
-      const gw  = document.getElementById('ganador-wrap');
-      const btn = document.getElementById('btn-start');
-      const tw  = document.getElementById('timer-wrap');
-      const sw  = document.getElementById('stats-wrap');
+      const lbl     = document.getElementById('partido-label');
+      const gw      = document.getElementById('ganador-wrap');
+      const btnStart= document.getElementById('btn-start');
+      const btnStop = document.getElementById('btn-stop');
+      const tw      = document.getElementById('timer-wrap');
+      const sw      = document.getElementById('stats-wrap');
 
       if (d.activo) {
         lbl.textContent = 'Partido en curso';
         document.getElementById('marcador').textContent = d.marcador || '0 - 0';
         sw.style.display = 'flex';
         gw.style.display = 'none';
-        btn.textContent = 'Reiniciar';
+        btnStart.textContent  = 'Reiniciar';
+        btnStop.style.display = 'inline-block';
         document.getElementById('tiempo-juego').textContent = d.tiempoJuego || '00:00';
         document.getElementById('estado-partido').textContent = estadoLabel[d.estado] || d.estado;
         if (d.modo === 1 && d.tiempoRestante > 0) {
@@ -700,20 +703,26 @@ static const char HTML[] PROGMEM = R"rawhtml(
         const g = d.goles || [0,0];
         gw.style.display = 'block';
         gw.textContent = g[0] > g[1] ? '¡Ganó equipo 1!' : g[1] > g[0] ? '¡Ganó equipo 2!' : '¡Empate!';
-        btn.textContent = 'Nuevo partido';
+        btnStart.textContent  = 'Nuevo partido';
+        btnStop.style.display = 'none';
       } else {
         lbl.textContent = 'En espera';
         document.getElementById('marcador').textContent = '- - -';
         sw.style.display = 'none';
         tw.style.display = 'none';
         gw.style.display = 'none';
-        btn.textContent = 'Iniciar partido';
+        btnStart.textContent  = 'Iniciar partido';
+        btnStop.style.display = 'none';
       }
     }).catch(()=>{});
   }
 
   function iniciarPartido() {
     fetch('/start', {method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});
+  }
+
+  function pararPartido() {
+    fetch('/stop', {method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});
   }
 
   actualizarMarcador();
@@ -896,6 +905,16 @@ static void handleStart() {
         _partido->terminado = false;
         Serial.println("[JUEGO] ¡Partido iniciado!");
     }
+    ambientePlay(config.pistaAmbiente);
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleStop() {
+    if (_partido) {
+        _partido->activo    = false;
+        _partido->terminado = true;
+        Serial.println("[JUEGO] Partido detenido manualmente.");
+    }
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -983,6 +1002,7 @@ void webConfigInit(Partido* p) {
     server.on("/save", HTTP_POST, handleSave);
     server.on("/estado", HTTP_GET, handleEstado);
     server.on("/start",  HTTP_POST, handleStart);
+    server.on("/stop",   HTTP_POST, handleStop);
     server.on("/configBrume", HTTP_GET, handleConfigBrumeGet);
 
     server.on("/wifiStatus", HTTP_GET, [](){

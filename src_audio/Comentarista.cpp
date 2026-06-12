@@ -92,15 +92,52 @@ static const RangoAudio& seleccionarRangoGol(const Partido& p) {
     return config.golNormal;
 }
 
+// ── Shuffle sin reposición por rango ─────────────────────────────────────────
+
+struct RangoState { uint8_t desde; uint16_t usados; };
+static RangoState _rangoStates[16];
+static uint8_t    _nRangoStates = 0;
+
+static uint16_t* getUsados(const RangoAudio& rango) {
+    for (uint8_t i = 0; i < _nRangoStates; i++) {
+        if (_rangoStates[i].desde == rango.desde) return &_rangoStates[i].usados;
+    }
+    if (_nRangoStates < 16) {
+        _rangoStates[_nRangoStates] = {rango.desde, 0};
+        return &_rangoStates[_nRangoStates++].usados;
+    }
+    return nullptr;
+}
+
 // ── Helpers internos ─────────────────────────────────────────────────────────
 
 static uint32_t _proximoComentario = 0;
 static bool     _iniciado          = false;
+static bool     _inicioPendiente   = false;
 
 static void reproducir(const char* label, const RangoAudio& rango) {
     if (rango.desde == 0 && rango.hasta == 0) return;
     if (rango.desde > rango.hasta)             return;
-    uint8_t item = (uint8_t)random(rango.desde, rango.hasta + 1);
+
+    uint8_t   size     = rango.hasta - rango.desde + 1;
+    uint16_t* usados   = getUsados(rango);
+    uint16_t  fullMask = (uint16_t)((1u << size) - 1);
+
+    if (!usados || *usados == fullMask) {
+        if (usados) *usados = 0;
+    }
+
+    uint8_t avail[16];
+    uint8_t count = 0;
+    for (uint8_t i = 0; i < size; i++) {
+        if (!usados || !(*usados & (1u << i))) avail[count++] = i;
+    }
+    if (count == 0) return;
+
+    uint8_t idx  = avail[random(0, count)];
+    uint8_t item = rango.desde + idx;
+    if (usados) *usados |= (1u << idx);
+
     Serial.printf("[COMENTARIO] %-16s — pista %d\n", label, item);
     vozPlayTrack(item);
 }
@@ -121,13 +158,30 @@ static void programarProximo() {
 // ── API pública ───────────────────────────────────────────────────────────────
 
 void comentaristaLoop(const Partido& partido) {
-    if (!partido.activo) return;
+    if (!partido.activo) {
+        _iniciado        = false;
+        _inicioPendiente = false;
+        return;
+    }
     if (!_iniciado) {
-        _iniciado = true;
-        _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
+        _iniciado          = true;
+        _inicioPendiente   = true;
+        _proximoComentario = millis() + 4000UL;  // 4s antes del comentario de inicio
         return;
     }
     if (millis() < _proximoComentario) return;
+
+    if (_inicioPendiente) {
+        _inicioPendiente = false;
+        dispararComentario(partido);  // comentario de inicio — una sola vez
+        programarProximo();
+        return;
+    }
+    // INICIO solo se dispara una vez — ignorar timer si todavía estamos en esa fase
+    if (determinarEstado(partido) == EstadoPartido::INICIO) {
+        programarProximo();
+        return;
+    }
     dispararComentario(partido);
     programarProximo();
 }
@@ -145,6 +199,7 @@ const char* comentaristaGetEstado(const Partido& partido) {
 }
 
 void comentaristaStats(const Partido& partido) {
+    if (!partido.activo) return;
     uint32_t elapsed = millis() - partido.inicio;
     uint32_t mm      = elapsed / 60000;
     uint32_t ss      = (elapsed % 60000) / 1000;
