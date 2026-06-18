@@ -67,12 +67,13 @@ static void cargarConfig() {
     // Comentarista — thresholds
     config.intervaloComentariosMin = prefs.getUShort("intervComMin",  10);
     config.intervaloComentariosMax = prefs.getUShort("intervComMax",  30);
-    config.intervaloStats          = prefs.getUShort("intervStats",    4);
+    config.intervaloStats          = prefs.getUShort("intervStats",    3);
     config.goleadaDiff             = prefs.getUChar("goleadaDiff",    3);
     config.calienteGoles           = prefs.getUChar("calienteGol",    4);
     config.inicioSegs              = prefs.getUShort("inicioSegs",   30);
     config.primerosMinsSegs        = prefs.getUShort("primMinsSegs", 120);
     config.ultimoTramoPorc         = prefs.getUChar("ultiTramoPc",   10);
+    config.umbralAburridoSegs      = prefs.getUShort("umbralAbur",  180);
     // Comentarista — rangos por estado
     config.comentInicio.desde       = prefs.getUChar("cInD",   1);
     config.comentInicio.hasta       = prefs.getUChar("cInH",   6);
@@ -128,6 +129,7 @@ static void guardarConfig() {
     prefs.putUShort("inicioSegs",    config.inicioSegs);
     prefs.putUShort("primMinsSegs",  config.primerosMinsSegs);
     prefs.putUChar("ultiTramoPc",    config.ultimoTramoPorc);
+    prefs.putUShort("umbralAbur",    config.umbralAburridoSegs);
     // Comentarista — rangos estado
     prefs.putUChar("cInD",  config.comentInicio.desde);
     prefs.putUChar("cInH",  config.comentInicio.hasta);
@@ -343,6 +345,9 @@ static const char HTML[] PROGMEM = R"rawhtml(
 </div>
 
 <form id="cfg" method="POST" action="/save">
+<div class="save-wrap" style="margin-bottom:12px">
+  <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
+</div>
 <div class="grid">
 
   <div class="card">
@@ -666,7 +671,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
     inicio:'Inicio', primeros_min:'Primeros min.', parejo:'Parejo',
     caliente:'Caliente 🔥', goleada:'Goleada', definido:'Definido',
     ultimo_tramo:'Último tramo ⚡', aburrido:'Aburrido', tranquilo:'Tranquilo',
-    en_espera:'En espera', terminado:'Finalizado'
+    en_espera:'En espera', terminado:'Finalizado', pausado:'Pausado ⏸'
   };
 
   function actualizarMarcador() {
@@ -695,6 +700,15 @@ static const char HTML[] PROGMEM = R"rawhtml(
         } else {
           tw.style.display = 'none';
         }
+      } else if (d.pausado) {
+        lbl.textContent = 'Partido pausado ⏸';
+        document.getElementById('marcador').textContent = d.marcador || '0 - 0';
+        document.getElementById('estado-partido').textContent = '';
+        sw.style.display = 'none';
+        tw.style.display = 'none';
+        gw.style.display = 'none';
+        btnStart.textContent  = 'Reanudar';
+        btnStop.style.display = 'inline-block';
       } else if (d.terminado) {
         lbl.textContent = 'Partido finalizado';
         document.getElementById('marcador').textContent = d.marcador || '0 - 0';
@@ -883,16 +897,17 @@ static void handleEstado() {
         snprintf(buf, sizeof(buf),
             "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,"
             "\"tiempoRestante\":%lu,\"tiempoJuego\":\"%s\","
-            "\"estado\":\"%s\",\"activo\":%s,\"terminado\":%s}",
+            "\"estado\":\"%s\",\"activo\":%s,\"terminado\":%s,\"pausado\":%s}",
             _partido->goles[0], _partido->goles[1], marcador, config.modoJuego,
             (unsigned long)restante, tiempo, estado,
             _partido->activo    ? "true" : "false",
-            _partido->terminado ? "true" : "false");
+            _partido->terminado ? "true" : "false",
+            _partido->pausado   ? "true" : "false");
     } else {
         snprintf(buf, sizeof(buf),
             "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,"
             "\"tiempoRestante\":0,\"tiempoJuego\":\"00:00\","
-            "\"estado\":\"en_espera\",\"activo\":false,\"terminado\":false}",
+            "\"estado\":\"en_espera\",\"activo\":false,\"terminado\":false,\"pausado\":false}",
             config.modoJuego);
     }
     server.send(200, "application/json", buf);
@@ -900,12 +915,21 @@ static void handleEstado() {
 
 static void handleStart() {
     if (_partido) {
-        _partido->resetear();
-        _partido->activo    = true;
-        _partido->terminado = false;
-        Serial.println("[JUEGO] ¡Partido iniciado!");
+        if (_partido->pausado) {
+            _partido->activo  = true;
+            _partido->pausado = false;
+            Serial.println("[JUEGO] Partido reanudado (web)");
+        } else {
+            comentaristaReiniciar();
+            _partido->resetear();
+            _partido->activo    = true;
+            _partido->terminado = false;
+            Serial.println("[JUEGO] ¡Partido iniciado!");
+            ambientePlay(config.pistaAmbiente);
+        }
+    } else {
+        ambientePlay(config.pistaAmbiente);
     }
-    ambientePlay(config.pistaAmbiente);
     server.send(200, "application/json", "{\"ok\":true}");
 }
 

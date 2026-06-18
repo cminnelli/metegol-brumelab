@@ -24,12 +24,10 @@ void vozPlay(Pista pista) {
 }
 
 void vozPlayTrack(uint8_t n) {
-    Serial.printf("[SP1] ▶ Pista %d\n", n);
     cmd(0x03, 0x00, n);
 }
 
 void vozSetVolumen(uint8_t vol) {
-    Serial.printf("[SP1] Volumen → %d\n", vol);
     cmd(0x06, 0x00, vol);
 }
 
@@ -42,7 +40,7 @@ void vozPoll() {
         if (idx >= 10 && buf[9] == 0xEF) {
             uint8_t tipo = buf[3], val = buf[6];
             switch (tipo) {
-                case 0x3D: Serial.printf("[SP1] ✓ Pista %d terminada\n", val); break;
+                case 0x3D: break;
                 case 0x3F: Serial.println("[SP1] SD online ✓");                 break;
                 case 0x40: if (val != 0x03) Serial.printf("[SP1] ✗ Error 0x%02X\n", val); break;
                 default: break;

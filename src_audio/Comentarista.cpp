@@ -45,11 +45,7 @@ static EstadoPartido determinarEstado(const Partido& p) {
     uint8_t  diff    = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
     uint8_t  total   = p.goles[0] + p.goles[1];
 
-    // 1. Fase inicio
-    if (elapsed < (uint32_t)config.inicioSegs * 1000)
-        return EstadoPartido::INICIO;
-
-    // 2. Primeros minutos
+    // 1. Primeros minutos
     if (elapsed < (uint32_t)config.primerosMinsSegs * 1000)
         return EstadoPartido::PRIMEROS_MINUTOS;
 
@@ -67,29 +63,54 @@ static EstadoPartido determinarEstado(const Partido& p) {
             return EstadoPartido::ULTIMO_TRAMO;
     }
 
-    // 4–9. Marcador
-    if (diff >= config.goleadaDiff)                               return EstadoPartido::GOLEADA;
-    if (total >= config.calienteGoles && diff < config.goleadaDiff) return EstadoPartido::CALIENTE;
-    if (total == 0)                                               return EstadoPartido::ABURRIDO;
-    if (diff == 0)                                                return EstadoPartido::PAREJO;
-    if (diff >= 1)                                                return EstadoPartido::DEFINIDO;
+    // 4. Sin actividad reciente → aburrido (pisa goleada si no hubo goles en mucho tiempo)
+    uint32_t tiempoSinGol = (total == 0) ? elapsed : (millis() - p.ultimoGol);
+    if (tiempoSinGol > (uint32_t)config.umbralAburridoSegs * 1000UL)
+        return EstadoPartido::ABURRIDO;
+
+    // 5–9. Marcador
+    if (diff >= config.goleadaDiff)                                  return EstadoPartido::GOLEADA;
+    if (total >= config.calienteGoles && diff < config.goleadaDiff)  return EstadoPartido::CALIENTE;
+    if (total == 0)                                                   return EstadoPartido::ABURRIDO;
+    if (diff == 0)   return EstadoPartido::PAREJO;
+    if (diff == 1)   return EstadoPartido::TRANQUILO;  // ventaja mínima
+    if (diff >= 2)   return EstadoPartido::DEFINIDO;   // ventaja clara (sin llegar a goleada)
     return EstadoPartido::TRANQUILO;
 }
 
 // ── Selección contextual de gol ───────────────────────────────────────────────
 
-static const RangoAudio& seleccionarRangoGol(const Partido& p) {
-    bool esEmpate   = (p.goles[0] == p.goles[1]);
-    bool esUltimoT  = (determinarEstado(p) == EstadoPartido::ULTIMO_TRAMO);
-    uint8_t diff    = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
-    uint8_t total   = p.goles[0] + p.goles[1];
+// Chequea ULTIMO_TRAMO directamente sin pasar por determinarEstado
+// (evita que ABURRIDO u otros estados con mayor prioridad lo pisen)
+static bool esUltimoTramo(const Partido& p) {
+    if (config.modoJuego == 1) {
+        uint32_t elapsed     = millis() - p.inicio;
+        uint32_t tiempoTotal = (uint32_t)config.duracionMin * 60000UL;
+        if (tiempoTotal > elapsed) {
+            uint32_t restante = tiempoTotal - elapsed;
+            return restante < (tiempoTotal * config.ultimoTramoPorc / 100);
+        }
+        return false;
+    } else {
+        uint8_t maxGoles = max(p.goles[0], p.goles[1]);
+        return (config.golesMax > maxGoles && (config.golesMax - maxGoles) <= 1);
+    }
+}
 
-    if (esUltimoT && esEmpate)                              return config.golAgonicoEmpate;
-    if (esUltimoT)                                          return config.golAgonico;
-    if (esEmpate)                                           return config.golEmpate;
-    if (total >= config.calienteGoles && diff < config.goleadaDiff) return config.golCaliente;
-    if (diff >= config.goleadaDiff)                         return config.golEfusivo;
-    return config.golNormal;
+struct TipoGol { const RangoAudio& rango; const char* nombre; };
+
+static TipoGol seleccionarTipoGol(const Partido& p) {
+    bool    esEmpate  = (p.goles[0] == p.goles[1]);
+    bool    esUltimoT = esUltimoTramo(p);
+    uint8_t diff      = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
+    uint8_t total     = p.goles[0] + p.goles[1];
+
+    if (esUltimoT && esEmpate)                                       return {config.golAgonicoEmpate, "agonico_empate"};
+    if (esUltimoT)                                                   return {config.golAgonico,        "agonico"};
+    if (esEmpate)                                                    return {config.golEmpate,         "empate"};
+    if (total >= config.calienteGoles && diff < config.goleadaDiff) return {config.golCaliente,       "caliente"};
+    if (diff >= config.goleadaDiff)                                  return {config.golEfusivo,        "efusivo"};
+    return {config.golNormal, "normal"};
 }
 
 // ── Shuffle sin reposición por rango ─────────────────────────────────────────
@@ -115,7 +136,8 @@ static uint32_t _proximoComentario = 0;
 static bool     _iniciado          = false;
 static bool     _inicioPendiente   = false;
 
-static void reproducir(const char* label, const RangoAudio& rango) {
+static void reproducir(const char* prefix, const char* label,
+                       const RangoAudio& rango, int8_t hwOffset = 0) {
     if (rango.desde == 0 && rango.hasta == 0) return;
     if (rango.desde > rango.hasta)             return;
 
@@ -138,14 +160,14 @@ static void reproducir(const char* label, const RangoAudio& rango) {
     uint8_t item = rango.desde + idx;
     if (usados) *usados |= (1u << idx);
 
-    Serial.printf("[COMENTARIO] %-16s — pista %d\n", label, item);
-    vozPlayTrack(item);
+    Serial.printf("[%s] %s — pista %d\n", prefix, label, item);
+    vozPlayTrack((uint8_t)(item + hwOffset));
 }
 
 static void dispararComentario(const Partido& partido) {
     EstadoPartido     estado = determinarEstado(partido);
     const RangoAudio& rango  = rangoDeEstado(estado);
-    reproducir(nombreEstado(estado), rango);
+    reproducir("COM", nombreEstado(estado), rango);
 }
 
 static void programarProximo() {
@@ -173,12 +195,7 @@ void comentaristaLoop(const Partido& partido) {
 
     if (_inicioPendiente) {
         _inicioPendiente = false;
-        dispararComentario(partido);  // comentario de inicio — una sola vez
-        programarProximo();
-        return;
-    }
-    // INICIO solo se dispara una vez — ignorar timer si todavía estamos en esa fase
-    if (determinarEstado(partido) == EstadoPartido::INICIO) {
+        reproducir("COM", "inicio", config.comentInicio);  // primer track siempre de rango inicio
         programarProximo();
         return;
     }
@@ -186,15 +203,24 @@ void comentaristaLoop(const Partido& partido) {
     programarProximo();
 }
 
+void comentaristaReiniciar() {
+    _iniciado        = false;
+    _inicioPendiente = false;
+}
+
 void comentaristaOnGol(const Partido& partido) {
     // DFPlayer sobreescribe el track en curso — el gol siempre pisa cualquier comentario
-    const RangoAudio& rango = seleccionarRangoGol(partido);
-    reproducir("gol", rango);
+    TipoGol tg = seleccionarTipoGol(partido);
+    reproducir("GOL", tg.nombre, tg.rango, -1);
     _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
 }
 
 const char* comentaristaGetEstado(const Partido& partido) {
-    if (!partido.activo) return partido.terminado ? "terminado" : "en_espera";
+    if (!partido.activo) {
+        if (partido.pausado)   return "pausado";
+        if (partido.terminado) return "terminado";
+        return "en_espera";
+    }
     return nombreEstado(determinarEstado(partido));
 }
 

@@ -9,6 +9,8 @@ public:
     uint32_t inicio    = 0;
     bool     activo    = false;
     bool     terminado = false;
+    bool     pausado   = false;
+    uint32_t ultimoGol = 0;   // millis() del último gol (0 = sin goles)
 
     void    sumarGol(uint8_t equipo);
     void    resetear();

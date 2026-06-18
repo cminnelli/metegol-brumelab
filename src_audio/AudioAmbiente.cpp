@@ -19,17 +19,14 @@ static void cmd(uint8_t c, uint8_t ph, uint8_t pl) {
 
 void ambienteBegin() {
     Serial1.begin(9600, SERIAL_8N1, AMB_RX, AMB_TX);
-    Serial.println("[SP2] Serial1 listo");
 }
 
 void ambienteSetVolumen(uint8_t vol) {
-    Serial.printf("[SP2] Volumen → %d\n", vol);
     cmd(0x06, 0x00, vol);
 }
 
 void ambientePlay(uint8_t pista) {
     _pistaActual = pista;
-    Serial.printf("[SP2] ▶ Pista %d (ambiente, loop)\n", pista);
     cmd(0x03, 0x00, pista);   // play
     cmd(0x19, 0x00, 0x00);    // single-track repeat — el DFPlayer loopea solo
 }
@@ -46,7 +43,7 @@ void ambientePoll() {
                 case 0x3F: Serial.println("[SP2] SD online ✓"); break;
                 case 0x3D:
                     // fallback: si 0x19 no pegó después de un reset del ESP32, la pista terminó → relanzar
-                    Serial.printf("[SP2] Pista terminada → reloop pista %d\n", _pistaActual);
+                    Serial.printf("[SP2] reloop pista %d\n", _pistaActual);
                     cmd(0x03, 0x00, _pistaActual);
                     cmd(0x19, 0x00, 0x00);
                     break;

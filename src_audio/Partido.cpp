@@ -5,13 +5,14 @@
 #include <Arduino.h>
 
 void Partido::sumarGol(uint8_t equipo) {
-    if (equipo < 2) goles[equipo]++;
+    if (equipo < 2) { goles[equipo]++; ultimoGol = millis(); }
 }
 
 void Partido::resetear() {
-    goles[0] = 0;
-    goles[1] = 0;
+    goles[0]  = 0;
+    goles[1]  = 0;
     inicio    = millis();
+    pausado   = false;
 }
 
 void Partido::getResultado(char* buf, size_t len) const {
@@ -35,7 +36,8 @@ int8_t Partido::ganador() const {
 void Partido::registrarGol(uint8_t equipo) {
     sumarGol(equipo);
 
-    Serial.printf("[JUEGO] Gol equipo %d\n", equipo + 1);
+    static const char* nombres[] = {"celeste", "blanco"};
+    Serial.printf("[JUEGO] Gol %s\n", nombres[equipo]);
     char buf[16];
     getResultado(buf, sizeof(buf));
     Serial.printf("[JUEGO] Marcador: %s\n", buf);
@@ -48,8 +50,8 @@ void Partido::registrarGol(uint8_t equipo) {
 
     if (fin) {
         int8_t w = ganador();
-        if (w == 0)      Serial.println("[JUEGO] ¡Ganó equipo 1!");
-        else if (w == 1) Serial.println("[JUEGO] ¡Ganó equipo 2!");
+        if (w == 0)      Serial.println("[JUEGO] ¡Ganó celeste!");
+        else if (w == 1) Serial.println("[JUEGO] ¡Ganó blanco!");
         else             Serial.println("[JUEGO] ¡Empate!");
         activo    = false;
         terminado = true;
