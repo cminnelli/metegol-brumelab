@@ -47,9 +47,9 @@ static EstadoPartido determinarEstado(const Partido& p) {
     uint8_t  diff    = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
     uint8_t  total   = p.goles[0] + p.goles[1];
 
-    // 1. Primeros minutos — cuenta desde que el comentario de inicio se disparó
+    // 1. Primeros minutos — 60s fijos desde que se disparó el comentario de inicio
     uint32_t refInicio = (_inicioFiredAt > 0) ? _inicioFiredAt : p.inicio;
-    if ((millis() - refInicio) < (uint32_t)config.primerosMinsSegs * 1000UL)
+    if ((millis() - refInicio) < 60000UL)
         return EstadoPartido::PRIMEROS_MINUTOS;
 
     // 3. Último tramo — lógica distinta según modo de juego

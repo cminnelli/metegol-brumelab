@@ -358,10 +358,6 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <input type="range" name="calienteGoles" min="2" max="10" value="%CALIENTE_GOL%" oninput="sl(this,'cg')">
     </div>
     <div class="field">
-      <label>Primeros minutos seg <b id="pms">%PRIM_MINS_SEGS%</b></label>
-      <input type="range" name="primerosMinsSegs" min="5" max="180" value="%PRIM_MINS_SEGS%" oninput="sl(this,'pms')">
-    </div>
-    <div class="field">
       <label>Sin goles → aburrido seg <b id="uas">%UMBRAL_ABUR%</b></label>
       <input type="range" name="umbralAburridoSegs" min="30" max="600" value="%UMBRAL_ABUR%" oninput="sl(this,'uas')">
     </div>
@@ -584,7 +580,7 @@ static String buildPage() {
     html.replace("%GOLEADA_DIFF%",String(config.goleadaDiff));
     html.replace("%CALIENTE_GOL%",String(config.calienteGoles));
     html.replace("%ULTI_TRAMO%",     String(config.ultimoTramoSegs));
-    html.replace("%PRIM_MINS_SEGS%", String(config.primerosMinsSegs));
+
     html.replace("%UMBRAL_ABUR%",    String(config.umbralAburridoSegs));
     // Comentarista — rangos estado
     html.replace("%C_IN_D%", String(config.comentInicio.desde));
@@ -640,7 +636,7 @@ static void handleSave() {
     if (server.hasArg("intervaloStats"))          config.intervaloStats          = constrain(server.arg("intervaloStats").toInt(), 3, 30);
     if (server.hasArg("goleadaDiff"))          config.goleadaDiff          = server.arg("goleadaDiff").toInt();
     if (server.hasArg("calienteGoles"))        config.calienteGoles        = server.arg("calienteGoles").toInt();
-    if (server.hasArg("primerosMinsSegs"))     config.primerosMinsSegs     = server.arg("primerosMinsSegs").toInt();
+
     if (server.hasArg("ultimoTramoSegs"))      config.ultimoTramoSegs      = server.arg("ultimoTramoSegs").toInt();
     if (server.hasArg("umbralAburridoSegs"))   config.umbralAburridoSegs   = server.arg("umbralAburridoSegs").toInt();
     // Comentarista — rangos estado
@@ -750,7 +746,7 @@ static void handleConfigBrumeGet() {
         "{"
         "\"intervaloComentariosMin\":%d,\"intervaloComentariosMax\":%d,\"intervaloStats\":%d,"
         "\"reglas\":{\"goleadaDiff\":%d,\"calienteGoles\":%d,"
-          "\"primerosMinsSegs\":%d,\"ultimoTramoSegs\":%d,\"umbralAburridoSegs\":%d},"
+          "\"ultimoTramoSegs\":%d,\"umbralAburridoSegs\":%d},"
         "\"comentarios\":{"
           "\"inicio\":{\"desde\":%d,\"hasta\":%d},"
           "\"primeros_minutos\":{\"desde\":%d,\"hasta\":%d},"
@@ -771,7 +767,7 @@ static void handleConfigBrumeGet() {
         "}",
         config.intervaloComentariosMin, config.intervaloComentariosMax, config.intervaloStats,
         config.goleadaDiff, config.calienteGoles,
-        config.primerosMinsSegs, config.ultimoTramoSegs, config.umbralAburridoSegs,
+        config.ultimoTramoSegs, config.umbralAburridoSegs,
         config.comentInicio.desde,        config.comentInicio.hasta,
         config.comentPrimerosMins.desde,  config.comentPrimerosMins.hasta,
         config.comentParejo.desde,        config.comentParejo.hasta,
