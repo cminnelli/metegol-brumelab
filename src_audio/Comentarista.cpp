@@ -54,7 +54,7 @@ static EstadoPartido determinarEstado(const Partido& p) {
         uint32_t tiempoTotal = (uint32_t)config.duracionMin * 60000UL;
         if (tiempoTotal > elapsed) {
             uint32_t restante = tiempoTotal - elapsed;
-            if (restante < (tiempoTotal * config.ultimoTramoPorc / 100))
+            if (restante < (uint32_t)config.ultimoTramoSegs * 1000UL)
                 return EstadoPartido::ULTIMO_TRAMO;
         }
     } else {
@@ -88,7 +88,7 @@ static bool esUltimoTramo(const Partido& p) {
         uint32_t tiempoTotal = (uint32_t)config.duracionMin * 60000UL;
         if (tiempoTotal > elapsed) {
             uint32_t restante = tiempoTotal - elapsed;
-            return restante < (tiempoTotal * config.ultimoTramoPorc / 100);
+            return restante < (uint32_t)config.ultimoTramoSegs * 1000UL;
         }
         return false;
     } else {

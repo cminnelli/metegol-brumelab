@@ -72,7 +72,7 @@ static void cargarConfig() {
     config.calienteGoles           = prefs.getUChar("calienteGol",    4);
     config.inicioSegs              = prefs.getUShort("inicioSegs",   30);
     config.primerosMinsSegs        = prefs.getUShort("primMinsSegs", 120);
-    config.ultimoTramoPorc         = prefs.getUChar("ultiTramoPc",   10);
+    config.ultimoTramoSegs         = prefs.getUShort("ultiTramoSeg",  60);
     config.umbralAburridoSegs      = prefs.getUShort("umbralAbur",  180);
     // Comentarista — rangos por estado
     config.comentInicio.desde       = prefs.getUChar("cInD",   1);
@@ -128,7 +128,7 @@ static void guardarConfig() {
     prefs.putUChar("calienteGol",    config.calienteGoles);
     prefs.putUShort("inicioSegs",    config.inicioSegs);
     prefs.putUShort("primMinsSegs",  config.primerosMinsSegs);
-    prefs.putUChar("ultiTramoPc",    config.ultimoTramoPorc);
+    prefs.putUShort("ultiTramoSeg",  config.ultimoTramoSegs);
     prefs.putUShort("umbralAbur",    config.umbralAburridoSegs);
     // Comentarista — rangos estado
     prefs.putUChar("cInD",  config.comentInicio.desde);
@@ -173,210 +173,153 @@ static const char HTML[] PROGMEM = R"rawhtml(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Metegol Config</title>
+<title>Metegol</title>
 <style>
   :root {
-    --bg: #0f0f13;
-    --card: #1a1a24;
-    --border: #2a2a3a;
+    --bg: #0a0a0f;
+    --card: #13131e;
+    --border: #22223a;
     --accent: #00e5ff;
-    --accent2: #ff4081;
+    --pink: #ff4081;
+    --purple: #7c4dff;
+    --green: #69f0ae;
+    --orange: #ff9100;
+    --celeste: #00b8d4;
+    --blanco: #eceff1;
     --text: #e0e0e0;
-    --muted: #888;
-    --radius: 14px;
+    --muted: #5a5a7a;
+    --radius: 16px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Segoe UI', sans-serif;
-    min-height: 100vh;
-    padding: 20px;
-  }
-  header {
-    text-align: center;
-    padding: 24px 0 32px;
-  }
-  header h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  header p { color: var(--muted); font-size: .85rem; margin-top: 6px; }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
-    max-width: 900px;
-    margin: 0 auto;
-  }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 22px;
-  }
-  .card h2 {
-    font-size: .75rem;
-    font-weight: 600;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 18px;
-  }
-  .field { margin-bottom: 18px; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; padding: 16px; }
+  header { text-align: center; padding: 28px 0 22px; }
+  header h1 { font-size: 1.9rem; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; background: linear-gradient(135deg, var(--accent), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header p { color: var(--muted); font-size: .75rem; margin-top: 5px; letter-spacing: 2px; text-transform: uppercase; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .partido-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+  .status-bar { background: rgba(255,255,255,.03); border-bottom: 1px solid var(--border); padding: 9px 20px; text-align: center; font-size: .68rem; letter-spacing: 2.5px; text-transform: uppercase; color: var(--muted); }
+  .scoreboard { display: flex; align-items: center; padding: 22px 16px 12px; gap: 0; }
+  .team { flex: 1; text-align: center; }
+  .team-name { display: block; font-size: .62rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px; }
+  .team.c .team-name { color: var(--celeste); }
+  .team.b .team-name { color: #aaa; }
+  .team-score { display: block; font-size: 4.5rem; font-weight: 800; line-height: 1; }
+  .team.c .team-score { color: var(--celeste); text-shadow: 0 0 40px rgba(0,184,212,.35); }
+  .team.b .team-score { color: var(--blanco); text-shadow: 0 0 40px rgba(236,239,241,.2); }
+  .score-sep { font-size: 1.8rem; color: var(--border); padding: 0 16px; font-weight: 300; line-height: 1; align-self: center; }
+  .partido-meta { display: none; justify-content: center; gap: 28px; padding: 2px 20px 14px; flex-wrap: wrap; }
+  .meta-item { text-align: center; }
+  .meta-lbl { display: block; font-size: .58rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .meta-val { font-size: 1rem; font-weight: 600; color: var(--text); }
+  .estado-badge { display: inline-block; padding: 2px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; background: rgba(0,229,255,.1); color: var(--accent); }
+  .ganador-banner { display: none; text-align: center; padding: 10px 20px 0; font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+  .btn-row { display: flex; gap: 10px; justify-content: center; padding: 14px 20px 20px; flex-wrap: wrap; }
+  .btn-start { padding: 11px 36px; background: linear-gradient(90deg,var(--accent),#0097a7); border: none; border-radius: 24px; color: #000; font-weight: 700; cursor: pointer; font-size: .88rem; letter-spacing: .5px; }
+  .btn-stop  { padding: 11px 36px; background: transparent; border: 1.5px solid #f44336; border-radius: 24px; color: #f44336; font-weight: 700; cursor: pointer; font-size: .88rem; display: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 20px 20px 18px; }
+  .card.cg { border-left-color: var(--purple); }
+  .card.cc { border-left-color: var(--orange); }
+  .card.cr { border-left-color: var(--pink); }
+  .card.cw { border-left-color: var(--green); }
+  .card h2 { font-size: .66rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 7px; }
+  .field { margin-bottom: 14px; }
   .field:last-child { margin-bottom: 0; }
-  label {
-    display: flex;
-    justify-content: space-between;
-    font-size: .85rem;
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-  label span {
-    font-weight: 700;
-    color: var(--text);
-    min-width: 28px;
-    text-align: right;
-  }
-  input[type=range] {
-    -webkit-appearance: none;
-    width: 100%;
-    height: 6px;
-    background: var(--border);
-    border-radius: 3px;
-    outline: none;
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-    box-shadow: 0 0 8px var(--accent);
-  }
-  .toggle-row {
-    display: flex;
-    gap: 10px;
-  }
-  .toggle-btn {
-    flex: 1;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: transparent;
-    color: var(--muted);
-    font-size: .85rem;
-    cursor: pointer;
-    transition: all .2s;
-  }
-  .toggle-btn.active {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(0,229,255,.08);
-  }
-  .save-wrap {
-    max-width: 900px;
-    margin: 24px auto 0;
-    text-align: center;
-  }
-  .btn-save {
-    padding: 14px 48px;
-    background: linear-gradient(90deg, var(--accent), #0097a7);
-    border: none;
-    border-radius: 30px;
-    color: #000;
-    font-weight: 700;
-    font-size: 1rem;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: opacity .2s;
-    box-shadow: 0 4px 20px rgba(0,229,255,.3);
-  }
-  .btn-save:hover { opacity: .85; }
-  #toast {
-    position: fixed;
-    bottom: 30px; left: 50%;
-    transform: translateX(-50%) translateY(80px);
-    background: var(--accent);
-    color: #000;
-    padding: 12px 28px;
-    border-radius: 30px;
-    font-weight: 700;
-    font-size: .9rem;
-    transition: transform .3s;
-    pointer-events: none;
-  }
+  label { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; color: var(--muted); margin-bottom: 7px; }
+  label b { color: var(--text); font-weight: 700; font-size: .88rem; min-width: 28px; text-align: right; }
+  input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; background: linear-gradient(to right,var(--accent) var(--p,0%),var(--border) var(--p,0%)); border-radius: 3px; outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--accent),0 2px 6px rgba(0,0,0,.5); cursor: pointer; }
+  .toggle-row { display: flex; gap: 8px; }
+  .toggle-btn { flex: 1; padding: 9px; border: 1.5px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted); font-size: .82rem; cursor: pointer; transition: all .15s; }
+  .toggle-btn.active { border-color: var(--purple); color: var(--purple); background: rgba(124,77,255,.1); }
+  .ni { width: 54px; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .84rem; padding: 5px 7px; text-align: center; outline: none; transition: border-color .15s; }
+  .ni:focus { border-color: var(--accent); }
+  .rt { width: 100%; border-collapse: collapse; font-size: .81rem; }
+  .rt th { color: var(--muted); font-weight: 500; padding: 3px 5px 8px; font-size: .7rem; letter-spacing: 1px; text-transform: uppercase; }
+  .rt th:first-child { text-align: left; }
+  .rt td { padding: 3px 4px; vertical-align: middle; }
+  .rs { padding: 8px 0 3px; color: var(--muted); font-size: .63rem; letter-spacing: 2px; text-transform: uppercase; }
+  .rl { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+  .rd { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .rd.g { background: var(--pink); }
+  .save-wrap { margin: 18px auto; text-align: center; }
+  .btn-save { padding: 13px 52px; background: linear-gradient(90deg,var(--accent),#0097a7); border: none; border-radius: 30px; color: #000; font-weight: 800; font-size: .92rem; letter-spacing: 1.5px; cursor: pointer; box-shadow: 0 4px 24px rgba(0,229,255,.22); transition: opacity .15s,transform .12s; }
+  .btn-save:active { opacity: .8; transform: scale(.98); }
+  #toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #000; padding: 10px 28px; border-radius: 30px; font-weight: 700; font-size: .86rem; transition: transform .26s; pointer-events: none; white-space: nowrap; z-index: 9999; }
   #toast.show { transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
+<div class="wrap">
 <header>
   <h1>⚽ Metegol</h1>
-  <p>Configuración del sistema</p>
+  <p>Sistema de comentarios</p>
 </header>
 
-<div style="max-width:900px;margin:0 auto 16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;text-align:center">
-  <div id="partido-label" style="font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">En espera</div>
-  <div id="marcador" style="font-size:3rem;font-weight:700;letter-spacing:6px;color:var(--accent)">- - -</div>
-  <div id="stats-wrap" style="display:none;margin-top:10px;justify-content:center;gap:24px;flex-wrap:wrap">
-    <div style="text-align:center">
-      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted)">Tiempo</div>
-      <div id="tiempo-juego" style="font-size:1.2rem;font-weight:600;color:var(--text)">00:00</div>
+<div class="partido-panel">
+  <div class="status-bar" id="partido-label">En espera</div>
+  <div class="scoreboard">
+    <div class="team c">
+      <span class="team-name">Celeste</span>
+      <span class="team-score" id="sc-c">0</span>
     </div>
-    <div style="text-align:center">
-      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted)">Estado</div>
-      <div id="estado-partido" style="font-size:1.2rem;font-weight:600;color:var(--accent2)">-</div>
-    </div>
-    <div id="timer-wrap" style="text-align:center;display:none">
-      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted)">Restante</div>
-      <div id="timer" style="font-size:1.2rem;font-weight:600;color:var(--muted)">--:--</div>
+    <span class="score-sep">—</span>
+    <div class="team b">
+      <span class="team-score" id="sc-b">0</span>
+      <span class="team-name">Blanco</span>
     </div>
   </div>
-  <div id="ganador-wrap" style="display:none;margin-top:8px;font-size:1rem;font-weight:600;color:var(--accent)"></div>
-  <div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-    <button id="btn-start" onclick="iniciarPartido()" style="padding:10px 32px;background:var(--accent);border:none;border-radius:20px;color:#000;font-weight:700;cursor:pointer;font-size:.9rem">Iniciar partido</button>
-    <button id="btn-stop" onclick="pararPartido()" style="display:none;padding:10px 32px;background:#c0392b;border:none;border-radius:20px;color:#fff;font-weight:700;cursor:pointer;font-size:.9rem">Parar partido</button>
+  <div class="partido-meta" id="pmeta">
+    <div class="meta-item">
+      <span class="meta-lbl">Tiempo</span>
+      <span class="meta-val" id="tiempo-juego">00:00</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-lbl">Estado</span>
+      <span id="estado-badge" class="estado-badge">—</span>
+    </div>
+    <div class="meta-item" id="timer-wrap" style="display:none">
+      <span class="meta-lbl">Restante</span>
+      <span class="meta-val" id="timer">--:--</span>
+    </div>
+  </div>
+  <div class="ganador-banner" id="ganador-wrap"></div>
+  <div class="btn-row">
+    <button id="btn-start" class="btn-start" onclick="iniciarPartido()">Iniciar partido</button>
+    <button id="btn-stop"  class="btn-stop"  onclick="pararPartido()">Parar partido</button>
   </div>
 </div>
 
 <form id="cfg" method="POST" action="/save">
-<div class="save-wrap" style="margin-bottom:12px">
+<div class="save-wrap" style="margin-bottom:16px">
   <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
 </div>
 <div class="grid">
 
   <div class="card">
-    <h2>🔊 Audio — Voz (SP1)</h2>
+    <h2>🔊 Voz — SP1</h2>
     <div class="field">
-      <label>Volumen <span id="vv">%VOL_VOZ%</span></label>
-      <input type="range" name="volumenVoz" min="0" max="30" value="%VOL_VOZ%"
-             oninput="document.getElementById('vv').textContent=this.value">
+      <label>Volumen <b id="vv">%VOL_VOZ%</b></label>
+      <input type="range" name="volumenVoz" min="0" max="30" value="%VOL_VOZ%" oninput="sl(this,'vv')">
     </div>
   </div>
 
   <div class="card">
-    <h2>🎵 Audio — Ambiente (SP2)</h2>
+    <h2>🎵 Ambiente — SP2</h2>
     <div class="field">
-      <label>Volumen <span id="va">%VOL_AMB%</span></label>
-      <input type="range" name="volumenAmbiente" min="0" max="30" value="%VOL_AMB%"
-             oninput="document.getElementById('va').textContent=this.value">
+      <label>Volumen <b id="va">%VOL_AMB%</b></label>
+      <input type="range" name="volumenAmbiente" min="0" max="30" value="%VOL_AMB%" oninput="sl(this,'va')">
     </div>
     <div class="field">
-      <label>Pista ambiente <span id="pa">%PISTA_AMB%</span></label>
-      <input type="range" name="pistaAmbiente" min="1" max="3" value="%PISTA_AMB%"
-             oninput="document.getElementById('pa').textContent=this.value">
+      <label>Pista <b id="pa">%PISTA_AMB%</b></label>
+      <input type="range" name="pistaAmbiente" min="1" max="3" value="%PISTA_AMB%" oninput="sl(this,'pa')">
     </div>
   </div>
 
-  <div class="card">
-    <h2>🎮 Modalidad del juego</h2>
+  <div class="card cg">
+    <h2>🎮 Modalidad</h2>
     <div class="field">
-      <label>Modo</label>
+      <label>Modo de juego</label>
       <div class="toggle-row">
         <button type="button" class="toggle-btn %MODO_GOLES_ACTIVE%" onclick="setModo(0)">Por goles</button>
         <button type="button" class="toggle-btn %MODO_TIEMPO_ACTIVE%" onclick="setModo(1)">Por tiempo</button>
@@ -384,376 +327,226 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <input type="hidden" name="modoJuego" id="modoJuego" value="%MODO%">
     </div>
     <div class="field" id="row-goles">
-      <label>Goles para ganar <span id="gm">%GOLES_MAX%</span></label>
-      <input type="range" name="golesMax" min="4" max="10" value="%GOLES_MAX%"
-             oninput="document.getElementById('gm').textContent=this.value">
+      <label>Goles para ganar <b id="gm">%GOLES_MAX%</b></label>
+      <input type="range" name="golesMax" min="4" max="10" value="%GOLES_MAX%" oninput="sl(this,'gm')">
     </div>
     <div class="field" id="row-tiempo">
-      <label>Duración (minutos) <span id="dm">%DUR_MIN%</span></label>
-      <input type="range" name="duracionMin" min="3" max="8" value="%DUR_MIN%"
-             oninput="document.getElementById('dm').textContent=this.value">
+      <label>Duración (min) <b id="dm">%DUR_MIN%</b></label>
+      <input type="range" name="duracionMin" min="3" max="8" value="%DUR_MIN%" oninput="sl(this,'dm')">
     </div>
   </div>
 
-  <div class="card">
-    <h2>💡 Display LED</h2>
+  <div class="card cc">
+    <h2>🎙 Comentarista</h2>
     <div class="field">
-      <label>Brillo <span id="br">%BRILLO%</span></label>
-      <input type="range" name="brillo" min="0" max="15" value="%BRILLO%"
-             oninput="document.getElementById('br').textContent=this.value">
+      <label>Intervalo mín. seg <b id="icn">%INTERV_COM_MIN%</b></label>
+      <input type="range" name="intervaloComentariosMin" min="5" max="120" value="%INTERV_COM_MIN%" oninput="sl(this,'icn')">
     </div>
     <div class="field">
-      <label>Velocidad scroll (ms) <span id="vs">%VEL_SCROLL%</span></label>
-      <input type="range" name="velocidadScroll" min="10" max="100" value="%VEL_SCROLL%"
-             oninput="document.getElementById('vs').textContent=this.value">
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>💬 Comentarista</h2>
-    <div class="field">
-      <label>Intervalo mínimo (seg) <span id="icn">%INTERV_COM_MIN%</span></label>
-      <input type="range" name="intervaloComentariosMin" min="5" max="120" value="%INTERV_COM_MIN%"
-             oninput="document.getElementById('icn').textContent=this.value">
+      <label>Intervalo máx. seg <b id="icx">%INTERV_COM_MAX%</b></label>
+      <input type="range" name="intervaloComentariosMax" min="5" max="120" value="%INTERV_COM_MAX%" oninput="sl(this,'icx')">
     </div>
     <div class="field">
-      <label>Intervalo máximo (seg) <span id="icx">%INTERV_COM_MAX%</span></label>
-      <input type="range" name="intervaloComentariosMax" min="5" max="120" value="%INTERV_COM_MAX%"
-             oninput="document.getElementById('icx').textContent=this.value">
+      <label>Stats serial seg <b id="ist">%INTERV_STATS%</b></label>
+      <input type="range" name="intervaloStats" min="3" max="30" value="%INTERV_STATS%" oninput="sl(this,'ist')">
     </div>
     <div class="field">
-      <label>Intervalo stats serial (seg) <span id="ist">%INTERV_STATS%</span></label>
-      <input type="range" name="intervaloStats" min="3" max="30" value="%INTERV_STATS%"
-             oninput="document.getElementById('ist').textContent=this.value">
+      <label>Diff goles → goleada <b id="gd">%GOLEADA_DIFF%</b></label>
+      <input type="range" name="goleadaDiff" min="2" max="6" value="%GOLEADA_DIFF%" oninput="sl(this,'gd')">
     </div>
     <div class="field">
-      <label>Diff. goles para goleada <span id="gd">%GOLEADA_DIFF%</span></label>
-      <input type="range" name="goleadaDiff" min="2" max="6" value="%GOLEADA_DIFF%"
-             oninput="document.getElementById('gd').textContent=this.value">
+      <label>Goles → caliente <b id="cg">%CALIENTE_GOL%</b></label>
+      <input type="range" name="calienteGoles" min="2" max="10" value="%CALIENTE_GOL%" oninput="sl(this,'cg')">
     </div>
     <div class="field">
-      <label>Total goles para "caliente" <span id="cg">%CALIENTE_GOL%</span></label>
-      <input type="range" name="calienteGoles" min="2" max="10" value="%CALIENTE_GOL%"
-             oninput="document.getElementById('cg').textContent=this.value">
+      <label>Primeros minutos seg <b id="pms">%PRIM_MINS_SEGS%</b></label>
+      <input type="range" name="primerosMinsSegs" min="30" max="300" value="%PRIM_MINS_SEGS%" oninput="sl(this,'pms')">
     </div>
     <div class="field">
-      <label>Segundos fase inicio <span id="ise">%INICIO_SEGS%</span></label>
-      <input type="range" name="inicioSegs" min="5" max="120" value="%INICIO_SEGS%"
-             oninput="document.getElementById('ise').textContent=this.value">
+      <label>Sin goles → aburrido seg <b id="uas">%UMBRAL_ABUR%</b></label>
+      <input type="range" name="umbralAburridoSegs" min="30" max="600" value="%UMBRAL_ABUR%" oninput="sl(this,'uas')">
     </div>
     <div class="field">
-      <label>Segundos primeros minutos <span id="pms">%PRIM_MINS_SEGS%</span></label>
-      <input type="range" name="primerosMinsSegs" min="30" max="300" value="%PRIM_MINS_SEGS%"
-             oninput="document.getElementById('pms').textContent=this.value">
-    </div>
-    <div class="field">
-      <label>% tiempo para último tramo <span id="utp">%ULTI_TRAMO%</span></label>
-      <input type="range" name="ultimoTramoPorc" min="5" max="30" value="%ULTI_TRAMO%"
-             oninput="document.getElementById('utp').textContent=this.value">
+      <label>Último tramo seg (tiempo) <b id="uts">%ULTI_TRAMO%</b></label>
+      <input type="range" name="ultimoTramoSegs" min="10" max="120" value="%ULTI_TRAMO%" oninput="sl(this,'uts')">
     </div>
   </div>
 
-  <div class="card">
-    <h2>🎵 Rangos de Audio</h2>
-    <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Pistas MP3 por estado del partido</p>
-    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
-      <thead><tr style="color:var(--muted)">
-        <th style="text-align:left;padding:4px 0;font-weight:500">Estado / Gol</th>
-        <th style="padding:4px 8px;font-weight:500">Desde</th>
-        <th style="padding:4px 8px;font-weight:500">Hasta</th>
-      </tr></thead>
+  <div class="card cr" style="grid-column:1/-1">
+    <h2>🎵 Rangos de audio — pistas MP3</h2>
+    <table class="rt">
+      <thead><tr><th>Estado / Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
       <tbody>
-        <tr><td colspan="3" style="padding:6px 0 2px;color:var(--muted);font-size:.75rem;letter-spacing:1px">COMENTARIOS</td></tr>
-        <tr><td style="padding:4px 0">inicio</td>
-          <td style="padding:3px 8px"><input type="number" name="cInD" min="0" max="255" value="%C_IN_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cInH" min="0" max="255" value="%C_IN_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">primeros_minutos</td>
-          <td style="padding:3px 8px"><input type="number" name="cPrD" min="0" max="255" value="%C_PR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cPrH" min="0" max="255" value="%C_PR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">parejo</td>
-          <td style="padding:3px 8px"><input type="number" name="cPaD" min="0" max="255" value="%C_PA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cPaH" min="0" max="255" value="%C_PA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">caliente</td>
-          <td style="padding:3px 8px"><input type="number" name="cCaD" min="0" max="255" value="%C_CA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cCaH" min="0" max="255" value="%C_CA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">goleada</td>
-          <td style="padding:3px 8px"><input type="number" name="cGoD" min="0" max="255" value="%C_GO_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cGoH" min="0" max="255" value="%C_GO_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">definido</td>
-          <td style="padding:3px 8px"><input type="number" name="cDeD" min="0" max="255" value="%C_DE_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cDeH" min="0" max="255" value="%C_DE_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">ultimo_tramo</td>
-          <td style="padding:3px 8px"><input type="number" name="cUtD" min="0" max="255" value="%C_UT_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cUtH" min="0" max="255" value="%C_UT_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">aburrido</td>
-          <td style="padding:3px 8px"><input type="number" name="cAbD" min="0" max="255" value="%C_AB_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cAbH" min="0" max="255" value="%C_AB_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0">tranquilo</td>
-          <td style="padding:3px 8px"><input type="number" name="cTrD" min="0" max="255" value="%C_TR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="cTrH" min="0" max="255" value="%C_TR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td colspan="3" style="padding:10px 0 2px;color:var(--muted);font-size:.75rem;letter-spacing:1px">GOLES ⚽</td></tr>
-        <tr><td style="padding:4px 0;color:var(--accent2)">gol_normal</td>
-          <td style="padding:3px 8px"><input type="number" name="gNorD" min="0" max="255" value="%G_NOR_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="gNorH" min="0" max="255" value="%G_NOR_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0;color:var(--accent2)">gol_efusivo</td>
-          <td style="padding:3px 8px"><input type="number" name="gEfD" min="0" max="255" value="%G_EF_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="gEfH" min="0" max="255" value="%G_EF_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0;color:var(--accent2)">gol_empate</td>
-          <td style="padding:3px 8px"><input type="number" name="gEmD" min="0" max="255" value="%G_EM_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="gEmH" min="0" max="255" value="%G_EM_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0;color:var(--accent2)">gol_caliente</td>
-          <td style="padding:3px 8px"><input type="number" name="gCaD" min="0" max="255" value="%G_CA_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="gCaH" min="0" max="255" value="%G_CA_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0;color:var(--accent2)">gol_agonico</td>
-          <td style="padding:3px 8px"><input type="number" name="gAgD" min="0" max="255" value="%G_AG_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="gAgH" min="0" max="255" value="%G_AG_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
-        <tr><td style="padding:4px 0;color:var(--accent2)">gol_agonico_empate</td>
-          <td style="padding:3px 8px"><input type="number" name="gAeD" min="0" max="255" value="%G_AE_D%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td>
-          <td style="padding:3px 8px"><input type="number" name="gAeH" min="0" max="255" value="%G_AE_H%" style="width:52px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--text);font-size:.85rem;padding:4px 6px;text-align:center;outline:none"></td></tr>
+        <tr><td colspan="3" class="rs">Comentarios</td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>inicio</span></td><td><input class="ni" type="number" name="cInD" min="0" max="255" value="%C_IN_D%"></td><td><input class="ni" type="number" name="cInH" min="0" max="255" value="%C_IN_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>primeros min.</span></td><td><input class="ni" type="number" name="cPrD" min="0" max="255" value="%C_PR_D%"></td><td><input class="ni" type="number" name="cPrH" min="0" max="255" value="%C_PR_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>parejo</span></td><td><input class="ni" type="number" name="cPaD" min="0" max="255" value="%C_PA_D%"></td><td><input class="ni" type="number" name="cPaH" min="0" max="255" value="%C_PA_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>caliente</span></td><td><input class="ni" type="number" name="cCaD" min="0" max="255" value="%C_CA_D%"></td><td><input class="ni" type="number" name="cCaH" min="0" max="255" value="%C_CA_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>goleada</span></td><td><input class="ni" type="number" name="cGoD" min="0" max="255" value="%C_GO_D%"></td><td><input class="ni" type="number" name="cGoH" min="0" max="255" value="%C_GO_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>definido</span></td><td><input class="ni" type="number" name="cDeD" min="0" max="255" value="%C_DE_D%"></td><td><input class="ni" type="number" name="cDeH" min="0" max="255" value="%C_DE_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>último tramo</span></td><td><input class="ni" type="number" name="cUtD" min="0" max="255" value="%C_UT_D%"></td><td><input class="ni" type="number" name="cUtH" min="0" max="255" value="%C_UT_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>aburrido</span></td><td><input class="ni" type="number" name="cAbD" min="0" max="255" value="%C_AB_D%"></td><td><input class="ni" type="number" name="cAbH" min="0" max="255" value="%C_AB_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd"></span>tranquilo</span></td><td><input class="ni" type="number" name="cTrD" min="0" max="255" value="%C_TR_D%"></td><td><input class="ni" type="number" name="cTrH" min="0" max="255" value="%C_TR_H%"></td></tr>
+        <tr><td colspan="3" class="rs">Goles ⚽</td></tr>
+        <tr><td><span class="rl"><span class="rd g"></span>normal</span></td><td><input class="ni" type="number" name="gNorD" min="0" max="255" value="%G_NOR_D%"></td><td><input class="ni" type="number" name="gNorH" min="0" max="255" value="%G_NOR_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd g"></span>efusivo</span></td><td><input class="ni" type="number" name="gEfD" min="0" max="255" value="%G_EF_D%"></td><td><input class="ni" type="number" name="gEfH" min="0" max="255" value="%G_EF_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd g"></span>empate</span></td><td><input class="ni" type="number" name="gEmD" min="0" max="255" value="%G_EM_D%"></td><td><input class="ni" type="number" name="gEmH" min="0" max="255" value="%G_EM_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd g"></span>caliente</span></td><td><input class="ni" type="number" name="gCaD" min="0" max="255" value="%G_CA_D%"></td><td><input class="ni" type="number" name="gCaH" min="0" max="255" value="%G_CA_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd g"></span>agónico</span></td><td><input class="ni" type="number" name="gAgD" min="0" max="255" value="%G_AG_D%"></td><td><input class="ni" type="number" name="gAgH" min="0" max="255" value="%G_AG_H%"></td></tr>
+        <tr><td><span class="rl"><span class="rd g"></span>agónico empate</span></td><td><input class="ni" type="number" name="gAeD" min="0" max="255" value="%G_AE_D%"></td><td><input class="ni" type="number" name="gAeH" min="0" max="255" value="%G_AE_H%"></td></tr>
       </tbody>
     </table>
   </div>
 
 </div>
-
 <div class="save-wrap">
   <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
 </div>
 </form>
 
-<div class="grid" style="margin-top:16px">
-  <div class="card" id="wifi-card">
-    <h2>📶 Acceso por tu WiFi</h2>
-
-    <!-- Estado: no conectado -->
+<div class="grid" style="margin-top:14px">
+  <div class="card cw" id="wifi-card">
+    <h2>📶 Acceso WiFi</h2>
     <div id="state-disconnected">
-      <div style="background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.2);border-radius:10px;padding:16px;margin-bottom:18px">
-        <p style="font-size:.9rem;color:var(--text);margin-bottom:8px"><b>¿Cómo funciona?</b></p>
-        <p style="font-size:.82rem;color:var(--muted);line-height:1.6">
-          Ahora estás conectado al AP <b style="color:var(--text)">Metegol</b>.<br>
-          Si ingresás tu WiFi de casa, el próximo acceso lo hacés directamente desde
-          <b style="color:var(--accent)">http://metegol.local</b> sin tener que cambiar de red.
-        </p>
-        <div style="display:flex;gap:8px;margin-top:12px;font-size:.8rem;color:var(--muted)">
-          <span style="background:rgba(0,229,255,.1);padding:4px 10px;border-radius:20px">1. Ingresá tu red</span>
-          <span style="background:rgba(0,229,255,.1);padding:4px 10px;border-radius:20px">2. Conectar</span>
-          <span style="background:rgba(0,229,255,.1);padding:4px 10px;border-radius:20px">3. Usá metegol.local</span>
-        </div>
+      <div style="background:rgba(105,240,174,.06);border:1px solid rgba(105,240,174,.15);border-radius:10px;padding:13px;margin-bottom:14px">
+        <p style="font-size:.86rem;color:var(--text);margin-bottom:5px"><b>Conectate a tu red</b></p>
+        <p style="font-size:.78rem;color:var(--muted);line-height:1.6">AP activo: <b style="color:var(--text)">Metegol</b>. Con tu WiFi accedés por <b style="color:var(--accent)">metegol.local</b> sin cambiar de red.</p>
       </div>
       <div class="field">
-        <label>Nombre de red (SSID)</label>
-        <input type="text" id="wSSID" placeholder="Tu WiFi de casa"
-          style="width:100%;padding:10px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--text);font-size:.9rem;outline:none">
+        <label>Red (SSID)</label>
+        <input type="text" id="wSSID" placeholder="Nombre de tu WiFi" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
       </div>
       <div class="field">
         <label>Contraseña</label>
-        <input type="password" id="wPass" placeholder="Contraseña del WiFi"
-          style="width:100%;padding:10px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--text);font-size:.9rem;outline:none">
+        <input type="password" id="wPass" placeholder="••••••" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
       </div>
-      <button type="button" onclick="conectarWifi()"
-        style="width:100%;padding:12px;background:linear-gradient(90deg,#7c4dff,#651fff);border:none;border-radius:10px;color:#fff;font-weight:700;font-size:.95rem;cursor:pointer;letter-spacing:.5px">
-        CONECTAR A MI WIFI
-      </button>
-      <div id="wifi-msg" style="font-size:.82rem;color:var(--muted);margin-top:12px;text-align:center;min-height:20px"></div>
+      <button type="button" onclick="conectarWifi()" style="width:100%;padding:11px;background:linear-gradient(90deg,var(--purple),#651fff);border:none;border-radius:10px;color:#fff;font-weight:700;font-size:.88rem;cursor:pointer">CONECTAR</button>
+      <div id="wifi-msg" style="font-size:.78rem;color:var(--muted);margin-top:10px;text-align:center;min-height:18px"></div>
     </div>
-
-    <!-- Estado: conectado -->
     <div id="state-connected" style="display:none">
-      <div style="text-align:center;padding:8px 0 16px">
-        <div style="font-size:2rem;margin-bottom:8px">✅</div>
-        <p style="color:var(--muted);font-size:.85rem;margin-bottom:4px">Conectado a <b id="ssid-label" style="color:var(--text)"></b></p>
-        <p style="color:var(--muted);font-size:.82rem;margin-bottom:16px">Accedé al metegol desde cualquier dispositivo en tu red:</p>
-        <a href="http://metegol.local" target="_blank"
-          style="display:inline-block;padding:14px 28px;background:linear-gradient(90deg,var(--accent),#0097a7);border-radius:30px;color:#000;font-weight:700;font-size:1.05rem;text-decoration:none;box-shadow:0 4px 20px rgba(0,229,255,.3)">
-          🌐 metegol.local
-        </a>
+      <div style="text-align:center;padding:6px 0 14px">
+        <div style="font-size:2rem;margin-bottom:7px">✅</div>
+        <p style="color:var(--muted);font-size:.83rem;margin-bottom:4px">Conectado a <b id="ssid-label" style="color:var(--text)"></b></p>
+        <p style="color:var(--muted);font-size:.78rem;margin-bottom:14px">Accedé desde cualquier dispositivo:</p>
+        <a href="http://metegol.local" target="_blank" style="display:inline-block;padding:11px 26px;background:linear-gradient(90deg,var(--accent),#0097a7);border-radius:28px;color:#000;font-weight:700;text-decoration:none">🌐 metegol.local</a>
       </div>
-      <div style="border-top:1px solid var(--border);padding-top:14px;text-align:center">
-        <button type="button" onclick="mostrarCambioRed()"
-          style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px 20px;border-radius:20px;font-size:.82rem;cursor:pointer">
-          Cambiar red WiFi
-        </button>
+      <div style="border-top:1px solid var(--border);padding-top:11px;text-align:center">
+        <button type="button" onclick="mostrarCambioRed()" style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:7px 18px;border-radius:20px;font-size:.78rem;cursor:pointer">Cambiar red</button>
       </div>
-      <div id="cambio-red" style="display:none;margin-top:14px">
-        <div class="field">
-          <label>Nueva red (SSID)</label>
-          <input type="text" id="wSSID2" placeholder="Nombre de la red"
-            style="width:100%;padding:10px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--text);font-size:.9rem;outline:none">
-        </div>
-        <div class="field">
-          <label>Contraseña</label>
-          <input type="password" id="wPass2" placeholder="Contraseña"
-            style="width:100%;padding:10px;background:var(--border);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--text);font-size:.9rem;outline:none">
-        </div>
-        <button type="button" onclick="cambiarRed()"
-          style="width:100%;padding:10px;background:linear-gradient(90deg,#7c4dff,#651fff);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer">
-          CAMBIAR RED
-        </button>
-        <div id="wifi-msg2" style="font-size:.82rem;color:var(--muted);margin-top:10px;text-align:center"></div>
+      <div id="cambio-red" style="display:none;margin-top:12px">
+        <div class="field"><label>Nueva red</label><input type="text" id="wSSID2" placeholder="SSID" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none"></div>
+        <div class="field"><label>Contraseña</label><input type="password" id="wPass2" placeholder="••••••" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none"></div>
+        <button type="button" onclick="cambiarRed()" style="width:100%;padding:10px;background:linear-gradient(90deg,var(--purple),#651fff);border:none;border-radius:10px;color:#fff;font-weight:700;cursor:pointer">CAMBIAR RED</button>
+        <div id="wifi-msg2" style="font-size:.78rem;color:var(--muted);margin-top:10px;text-align:center"></div>
       </div>
     </div>
   </div>
 </div>
+</div>
 
-<div id="toast">✓ Configuración guardada</div>
+<div id="toast">✓ Guardado</div>
 
 <script>
-  function setModo(v) {
-    document.getElementById('modoJuego').value = v;
-    document.querySelectorAll('.toggle-btn').forEach((b,i) => b.classList.toggle('active', i===v));
-    document.getElementById('row-goles').style.display = v===0?'':'none';
-    document.getElementById('row-tiempo').style.display = v===1?'':'none';
+  function sl(el,id){
+    document.getElementById(id).textContent=el.value;
+    el.style.setProperty('--p',((el.value-el.min)/(el.max-el.min)*100)+'%');
+  }
+  document.querySelectorAll('input[type=range]').forEach(el=>{
+    el.style.setProperty('--p',((el.value-el.min)/(el.max-el.min)*100)+'%');
+  });
+  function setModo(v){
+    document.getElementById('modoJuego').value=v;
+    document.querySelectorAll('.toggle-btn').forEach((b,i)=>b.classList.toggle('active',i===v));
+    document.getElementById('row-goles').style.display=v===0?'':'none';
+    document.getElementById('row-tiempo').style.display=v===1?'':'none';
   }
   setModo(parseInt(document.getElementById('modoJuego').value));
-
-  function actualizarEstadoWiFi() {
+  function actualizarEstadoWiFi(){
     fetch('/wifiStatus').then(r=>r.json()).then(d=>{
-      if (d.connected) {
-        document.getElementById('state-disconnected').style.display = 'none';
-        document.getElementById('state-connected').style.display = 'block';
-        document.getElementById('ssid-label').textContent = d.ssid;
-      } else {
-        document.getElementById('state-disconnected').style.display = 'block';
-        document.getElementById('state-connected').style.display = 'none';
-      }
+      document.getElementById('state-disconnected').style.display=d.connected?'none':'block';
+      document.getElementById('state-connected').style.display=d.connected?'block':'none';
+      if(d.connected)document.getElementById('ssid-label').textContent=d.ssid;
     }).catch(()=>{});
   }
-
-  function mostrarCambioRed() {
-    const cr = document.getElementById('cambio-red');
-    cr.style.display = cr.style.display === 'none' ? 'block' : 'none';
+  function mostrarCambioRed(){const c=document.getElementById('cambio-red');c.style.display=c.style.display==='none'?'block':'none';}
+  function _doConectar(ssid,pass,msgEl){
+    if(!ssid){msgEl.textContent='Ingresá el SSID';return;}
+    msgEl.style.color='var(--accent)';msgEl.textContent='Conectando...';
+    fetch('/wifi',{method:'POST',body:new URLSearchParams({ssid,pass})}).then(r=>r.json()).then(()=>{
+      let n=0;const t=setInterval(()=>{
+        n++;msgEl.textContent='Conectando'+'.'.repeat(n%4);
+        fetch('/wifiStatus').then(r=>r.json()).then(d=>{
+          if(d.connected){clearInterval(t);msgEl.textContent='';actualizarEstadoWiFi();}
+          else if(n>20){clearInterval(t);msgEl.style.color='var(--pink)';msgEl.textContent='No se pudo conectar.';}
+        }).catch(()=>{});
+      },1500);
+    }).catch(()=>{msgEl.textContent='Error';});
   }
-
-  function _doConectar(ssid, pass, msgEl) {
-    if (!ssid) { msgEl.textContent = 'Ingresá el nombre de la red'; return; }
-    msgEl.style.color = 'var(--accent)';
-    msgEl.textContent = 'Conectando...';
-    fetch('/wifi', { method:'POST', body: new URLSearchParams({ssid, pass}) })
-      .then(r=>r.json()).then(()=>{
-        let intentos = 0;
-        const poll = setInterval(() => {
-          intentos++;
-          msgEl.textContent = 'Conectando' + '.'.repeat(intentos % 4);
-          fetch('/wifiStatus').then(r=>r.json()).then(d=>{
-            if (d.connected) {
-              clearInterval(poll);
-              msgEl.textContent = '';
-              actualizarEstadoWiFi();
-            } else if (intentos > 20) {
-              clearInterval(poll);
-              msgEl.style.color = '#ff4081';
-              msgEl.textContent = 'No se pudo conectar. Verificá la contraseña.';
-            }
-          }).catch(()=>{});
-        }, 1500);
-      }).catch(()=>{ msgEl.textContent = 'Error al enviar'; });
-  }
-  actualizarEstadoWiFi();
-  setInterval(actualizarEstadoWiFi, 5000);
-
-  function conectarWifi() {
-    _doConectar(
-      document.getElementById('wSSID').value.trim(),
-      document.getElementById('wPass').value,
-      document.getElementById('wifi-msg')
-    );
-  }
-
-  function cambiarRed() {
-    _doConectar(
-      document.getElementById('wSSID2').value.trim(),
-      document.getElementById('wPass2').value,
-      document.getElementById('wifi-msg2')
-    );
-  }
-
-  const estadoLabel = {
-    inicio:'Inicio', primeros_min:'Primeros min.', parejo:'Parejo',
-    caliente:'Caliente 🔥', goleada:'Goleada', definido:'Definido',
-    ultimo_tramo:'Último tramo ⚡', aburrido:'Aburrido', tranquilo:'Tranquilo',
-    en_espera:'En espera', terminado:'Finalizado', pausado:'Pausado ⏸'
+  function conectarWifi(){_doConectar(document.getElementById('wSSID').value.trim(),document.getElementById('wPass').value,document.getElementById('wifi-msg'));}
+  function cambiarRed(){_doConectar(document.getElementById('wSSID2').value.trim(),document.getElementById('wPass2').value,document.getElementById('wifi-msg2'));}
+  actualizarEstadoWiFi();setInterval(actualizarEstadoWiFi,5000);
+  const EC={
+    inicio:'Inicio',primeros_min:'Primeros min.',parejo:'Parejo',
+    caliente:'Caliente 🔥',goleada:'Goleada 💥',definido:'Definido',
+    ultimo_tramo:'Último tramo ⚡',aburrido:'Aburrido 😴',tranquilo:'Tranquilo',
+    en_espera:'En espera',terminado:'Finalizado',pausado:'Pausado ⏸'
   };
-
-  function actualizarMarcador() {
+  const ECC={
+    parejo:'#7c4dff',caliente:'#ff9100',goleada:'#f44336',
+    ultimo_tramo:'#ff4081',aburrido:'#607d8b',tranquilo:'#546e7a',
+    definido:'#0097a7',inicio:'#00e5ff',primeros_min:'#00b8d4'
+  };
+  function actualizarMarcador(){
     fetch('/estado').then(r=>r.json()).then(d=>{
-      const lbl     = document.getElementById('partido-label');
-      const gw      = document.getElementById('ganador-wrap');
-      const btnStart= document.getElementById('btn-start');
-      const btnStop = document.getElementById('btn-stop');
-      const tw      = document.getElementById('timer-wrap');
-      const sw      = document.getElementById('stats-wrap');
-
-      if (d.activo) {
-        lbl.textContent = 'Partido en curso';
-        document.getElementById('marcador').textContent = d.marcador || '0 - 0';
-        sw.style.display = 'flex';
-        gw.style.display = 'none';
-        btnStart.textContent  = 'Reiniciar';
-        btnStop.style.display = 'inline-block';
-        document.getElementById('tiempo-juego').textContent = d.tiempoJuego || '00:00';
-        document.getElementById('estado-partido').textContent = estadoLabel[d.estado] || d.estado;
-        if (d.modo === 1 && d.tiempoRestante > 0) {
-          tw.style.display = 'block';
-          const s = d.tiempoRestante;
-          document.getElementById('timer').textContent =
-            String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
-        } else {
-          tw.style.display = 'none';
-        }
-      } else if (d.pausado) {
-        lbl.textContent = 'Partido pausado ⏸';
-        document.getElementById('marcador').textContent = d.marcador || '0 - 0';
-        document.getElementById('estado-partido').textContent = '';
-        sw.style.display = 'none';
-        tw.style.display = 'none';
-        gw.style.display = 'none';
-        btnStart.textContent  = 'Reanudar';
-        btnStop.style.display = 'inline-block';
-      } else if (d.terminado) {
-        lbl.textContent = 'Partido finalizado';
-        document.getElementById('marcador').textContent = d.marcador || '0 - 0';
-        sw.style.display = 'none';
-        tw.style.display = 'none';
-        const g = d.goles || [0,0];
-        gw.style.display = 'block';
-        gw.textContent = g[0] > g[1] ? '¡Ganó equipo 1!' : g[1] > g[0] ? '¡Ganó equipo 2!' : '¡Empate!';
-        btnStart.textContent  = 'Nuevo partido';
-        btnStop.style.display = 'none';
-      } else {
-        lbl.textContent = 'En espera';
-        document.getElementById('marcador').textContent = '- - -';
-        sw.style.display = 'none';
-        tw.style.display = 'none';
-        gw.style.display = 'none';
-        btnStart.textContent  = 'Iniciar partido';
-        btnStop.style.display = 'none';
+      const g=d.goles||[0,0];
+      const lbl=document.getElementById('partido-label');
+      const pm=document.getElementById('pmeta');
+      const gw=document.getElementById('ganador-wrap');
+      const bs=document.getElementById('btn-start');
+      const bst=document.getElementById('btn-stop');
+      document.getElementById('sc-c').textContent=g[0];
+      document.getElementById('sc-b').textContent=g[1];
+      if(d.activo){
+        lbl.textContent='Partido en curso';
+        pm.style.display='flex';gw.style.display='none';
+        bs.textContent='Reiniciar';bst.style.display='inline-block';
+        document.getElementById('tiempo-juego').textContent=d.tiempoJuego||'00:00';
+        const badge=document.getElementById('estado-badge');
+        badge.textContent=EC[d.estado]||d.estado;
+        badge.style.color=ECC[d.estado]||'var(--accent)';
+        const tw=document.getElementById('timer-wrap');
+        if(d.modo===1&&d.tiempoRestante>0){
+          tw.style.display='block';
+          const s=d.tiempoRestante;
+          document.getElementById('timer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+        }else{tw.style.display='none';}
+      }else if(d.pausado){
+        lbl.textContent='Partido pausado ⏸';
+        pm.style.display='none';gw.style.display='none';
+        bs.textContent='Reanudar';bst.style.display='inline-block';
+      }else if(d.terminado){
+        lbl.textContent='Partido finalizado';
+        pm.style.display='none';
+        gw.style.display='block';
+        gw.textContent=g[0]>g[1]?'🏆 Ganó Celeste!':g[1]>g[0]?'🏆 Ganó Blanco!':'🤝 Empate!';
+        bs.textContent='Nuevo partido';bst.style.display='none';
+      }else{
+        lbl.textContent='En espera';
+        pm.style.display='none';gw.style.display='none';
+        bs.textContent='Iniciar partido';bst.style.display='none';
+        document.getElementById('sc-c').textContent='0';
+        document.getElementById('sc-b').textContent='0';
       }
     }).catch(()=>{});
   }
-
-  function iniciarPartido() {
-    fetch('/start', {method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});
-  }
-
-  function pararPartido() {
-    fetch('/stop', {method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});
-  }
-
-  actualizarMarcador();
-  setInterval(actualizarMarcador, 3000);
-
-  document.getElementById('cfg').addEventListener('submit', function(e) {
+  function iniciarPartido(){fetch('/start',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});}
+  function pararPartido(){fetch('/stop',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});}
+  actualizarMarcador();setInterval(actualizarMarcador,3000);
+  document.getElementById('cfg').addEventListener('submit',function(e){
     e.preventDefault();
-    const data = new FormData(this);
-    fetch('/save', { method:'POST', body: new URLSearchParams(data) })
-      .then(r => r.json())
-      .then(j => {
-        if (j.ok) {
-          const t = document.getElementById('toast');
-          t.classList.add('show');
-          setTimeout(() => t.classList.remove('show'), 3000);
-        }
-      }).catch(() => {});
+    fetch('/save',{method:'POST',body:new URLSearchParams(new FormData(this))}).then(r=>r.json()).then(j=>{
+      if(j.ok){const t=document.getElementById('toast');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+    }).catch(()=>{});
   });
 </script>
 </body>
@@ -780,10 +573,9 @@ static String buildPage() {
     html.replace("%INTERV_STATS%",   String(config.intervaloStats));
     html.replace("%GOLEADA_DIFF%",String(config.goleadaDiff));
     html.replace("%CALIENTE_GOL%",String(config.calienteGoles));
-    html.replace("%INICIO_SEGS%", String(config.inicioSegs));
-    html.replace("%ULTI_TRAMO%",  String(config.ultimoTramoPorc));
-    // También agrego primerosMinsSegs al slider (si hay un placeholder en el HTML)
+    html.replace("%ULTI_TRAMO%",     String(config.ultimoTramoSegs));
     html.replace("%PRIM_MINS_SEGS%", String(config.primerosMinsSegs));
+    html.replace("%UMBRAL_ABUR%",    String(config.umbralAburridoSegs));
     // Comentarista — rangos estado
     html.replace("%C_IN_D%", String(config.comentInicio.desde));
     html.replace("%C_IN_H%", String(config.comentInicio.hasta));
@@ -838,9 +630,9 @@ static void handleSave() {
     if (server.hasArg("intervaloStats"))          config.intervaloStats          = constrain(server.arg("intervaloStats").toInt(), 3, 30);
     if (server.hasArg("goleadaDiff"))          config.goleadaDiff          = server.arg("goleadaDiff").toInt();
     if (server.hasArg("calienteGoles"))        config.calienteGoles        = server.arg("calienteGoles").toInt();
-    if (server.hasArg("inicioSegs"))           config.inicioSegs           = server.arg("inicioSegs").toInt();
     if (server.hasArg("primerosMinsSegs"))     config.primerosMinsSegs     = server.arg("primerosMinsSegs").toInt();
-    if (server.hasArg("ultimoTramoPorc"))      config.ultimoTramoPorc      = server.arg("ultimoTramoPorc").toInt();
+    if (server.hasArg("ultimoTramoSegs"))      config.ultimoTramoSegs      = server.arg("ultimoTramoSegs").toInt();
+    if (server.hasArg("umbralAburridoSegs"))   config.umbralAburridoSegs   = server.arg("umbralAburridoSegs").toInt();
     // Comentarista — rangos estado
     if (server.hasArg("cInD")) config.comentInicio.desde          = server.arg("cInD").toInt();
     if (server.hasArg("cInH")) config.comentInicio.hasta          = server.arg("cInH").toInt();
@@ -948,7 +740,7 @@ static void handleConfigBrumeGet() {
         "{"
         "\"intervaloComentariosMin\":%d,\"intervaloComentariosMax\":%d,\"intervaloStats\":%d,"
         "\"reglas\":{\"goleadaDiff\":%d,\"calienteGoles\":%d,"
-          "\"inicioSegs\":%d,\"primerosMinsSegs\":%d,\"ultimoTramoPorc\":%d},"
+          "\"primerosMinsSegs\":%d,\"ultimoTramoSegs\":%d,\"umbralAburridoSegs\":%d},"
         "\"comentarios\":{"
           "\"inicio\":{\"desde\":%d,\"hasta\":%d},"
           "\"primeros_minutos\":{\"desde\":%d,\"hasta\":%d},"
@@ -969,7 +761,7 @@ static void handleConfigBrumeGet() {
         "}",
         config.intervaloComentariosMin, config.intervaloComentariosMax, config.intervaloStats,
         config.goleadaDiff, config.calienteGoles,
-        config.inicioSegs, config.primerosMinsSegs, config.ultimoTramoPorc,
+        config.primerosMinsSegs, config.ultimoTramoSegs, config.umbralAburridoSegs,
         config.comentInicio.desde,        config.comentInicio.hasta,
         config.comentPrimerosMins.desde,  config.comentPrimerosMins.hasta,
         config.comentParejo.desde,        config.comentParejo.hasta,
