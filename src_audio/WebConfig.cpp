@@ -65,15 +65,15 @@ static void cargarConfig() {
     config.pistaAmbiente   = prefs.getUChar("pistaAmb",    3);
 
     // Comentarista — thresholds
-    config.intervaloComentariosMin = prefs.getUShort("intervComMin",  10);
-    config.intervaloComentariosMax = prefs.getUShort("intervComMax",  30);
-    config.intervaloStats          = prefs.getUShort("intervStats",    3);
-    config.goleadaDiff             = prefs.getUChar("goleadaDiff",    3);
-    config.calienteGoles           = prefs.getUChar("calienteGol",    4);
+    config.intervaloComentariosMin = prefs.getUShort("intervComMin",  12);
+    config.intervaloComentariosMax = prefs.getUShort("intervComMax",  35);
+    config.intervaloStats          = prefs.getUShort("intervStats",    5);
+    config.goleadaDiff             = prefs.getUChar("goleadaDiff",    3);  // 3+ goles de diff = goleada
+    config.calienteGoles           = prefs.getUChar("calienteGol",    4);  // 4+ goles totales = puede ser caliente
     config.inicioSegs              = prefs.getUShort("inicioSegs",   30);
-    config.primerosMinsSegs        = prefs.getUShort("primMinsSegs",  20);
-    config.ultimoTramoSegs         = prefs.getUShort("ultiTramoSeg",  60);
-    config.umbralAburridoSegs      = prefs.getUShort("umbralAbur",  180);
+    config.primerosMinsSegs        = prefs.getUShort("primMinsSegs",  20);  // 20s de apertura
+    config.ultimoTramoSegs         = prefs.getUShort("ultiTramoSeg",  60);  // últimos 60s = tensión
+    config.umbralAburridoSegs      = prefs.getUShort("umbralAbur",   50);  // 50s sin goles = aburrido
     // Comentarista — rangos por estado
     config.comentInicio.desde       = prefs.getUChar("cInD",   1);
     config.comentInicio.hasta       = prefs.getUChar("cInH",   6);
@@ -623,10 +623,12 @@ static String buildPage() {
 }
 
 static void handleRoot() {
+    Serial.printf("[WEB] GET / — %s\n", server.client().remoteIP().toString().c_str());
     server.send(200, "text/html", buildPage());
 }
 
 static void handleSave() {
+    Serial.printf("[WEB] POST /save — %s\n", server.client().remoteIP().toString().c_str());
     if (server.hasArg("volumenVoz"))      config.volumenVoz      = server.arg("volumenVoz").toInt();
     if (server.hasArg("volumenAmbiente")) config.volumenAmbiente = server.arg("volumenAmbiente").toInt();
     if (server.hasArg("modoJuego"))       config.modoJuego       = server.arg("modoJuego").toInt();
@@ -747,6 +749,7 @@ static void handleStop() {
 }
 
 static void handleConfigBrumeGet() {
+    Serial.printf("[WEB] GET /configBrume — %s\n", server.client().remoteIP().toString().c_str());
     static char buf[900];
     snprintf(buf, sizeof(buf),
         "{"

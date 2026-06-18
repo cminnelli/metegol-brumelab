@@ -42,43 +42,55 @@ static const RangoAudio& rangoDeEstado(EstadoPartido e) {
 
 static uint32_t _inicioFiredAt = 0;
 
+// Tiempo máximo desde el último gol para que el partido siga siendo "caliente"
+#define CALIENTE_RECIENTE_MS 45000UL
+
 static EstadoPartido determinarEstado(const Partido& p) {
-    uint32_t elapsed = millis() - p.inicio;
+    uint32_t now     = millis();
+    uint32_t elapsed = now - p.inicio;
     uint8_t  diff    = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
     uint8_t  total   = p.goles[0] + p.goles[1];
 
-    // 1. Primeros minutos — duración configurable desde que se disparó el comentario de inicio
+    // ── 1. Primeros minutos ────────────────────────────────────────────────────
+    // Dura primerosMinsSegs a partir del comentario de inicio
     uint32_t refInicio = (_inicioFiredAt > 0) ? _inicioFiredAt : p.inicio;
-    if ((millis() - refInicio) < (uint32_t)config.primerosMinsSegs * 1000UL)
+    if ((now - refInicio) < (uint32_t)config.primerosMinsSegs * 1000UL)
         return EstadoPartido::PRIMEROS_MINUTOS;
 
-    // 3. Último tramo — lógica distinta según modo de juego
+    // ── 2. Último tramo — siempre gana sobre el marcador ──────────────────────
     if (config.modoJuego == 1) {
         uint32_t tiempoTotal = (uint32_t)config.duracionMin * 60000UL;
-        if (tiempoTotal > elapsed) {
-            uint32_t restante = tiempoTotal - elapsed;
-            if (restante < (uint32_t)config.ultimoTramoSegs * 1000UL)
-                return EstadoPartido::ULTIMO_TRAMO;
-        }
+        if (tiempoTotal > elapsed && (tiempoTotal - elapsed) < (uint32_t)config.ultimoTramoSegs * 1000UL)
+            return EstadoPartido::ULTIMO_TRAMO;
     } else {
         uint8_t maxGoles = max(p.goles[0], p.goles[1]);
         if (config.golesMax > maxGoles && (config.golesMax - maxGoles) <= 1)
             return EstadoPartido::ULTIMO_TRAMO;
     }
 
-    // 4. Sin actividad reciente → aburrido (pisa goleada si no hubo goles en mucho tiempo)
-    uint32_t tiempoSinGol = (total == 0) ? elapsed : (millis() - p.ultimoGol);
+    // ── 3. Goleada — diferencia aplastante ────────────────────────────────────
+    if (diff >= config.goleadaDiff)
+        return EstadoPartido::GOLEADA;
+
+    // ── 4. Caliente — partido vivo: muchos goles + apretado + acción reciente ─
+    uint32_t tiempoDesdeGol = (total > 0) ? (now - p.ultimoGol) : 0xFFFFFFFFUL;
+    if (total >= config.calienteGoles
+        && diff < config.goleadaDiff
+        && tiempoDesdeGol < CALIENTE_RECIENTE_MS)
+        return EstadoPartido::CALIENTE;
+
+    // ── 5. Aburrido — sin actividad desde que terminaron los primeros minutos ─
+    uint32_t normalStart  = refInicio + (uint32_t)config.primerosMinsSegs * 1000UL;
+    uint32_t tiempoSinGol = (total == 0)
+        ? (now > normalStart ? now - normalStart : 0)
+        : tiempoDesdeGol;
     if (tiempoSinGol > (uint32_t)config.umbralAburridoSegs * 1000UL)
         return EstadoPartido::ABURRIDO;
 
-    // 5–9. Marcador
-    if (diff >= config.goleadaDiff)                                  return EstadoPartido::GOLEADA;
-    if (total >= config.calienteGoles && diff < config.goleadaDiff)  return EstadoPartido::CALIENTE;
-    if (total == 0)                                                   return EstadoPartido::ABURRIDO;
-    if (diff == 0)   return EstadoPartido::PAREJO;
-    if (diff == 1)   return EstadoPartido::TRANQUILO;  // ventaja mínima
-    if (diff >= 2)   return EstadoPartido::DEFINIDO;   // ventaja clara (sin llegar a goleada)
-    return EstadoPartido::TRANQUILO;
+    // ── 6–8. Basado en el marcador ────────────────────────────────────────────
+    if (diff == 0) return EstadoPartido::PAREJO;
+    if (diff == 1) return EstadoPartido::TRANQUILO;
+    return EstadoPartido::DEFINIDO;   // diff 2..goleadaDiff-1
 }
 
 // ── Selección contextual de gol ───────────────────────────────────────────────

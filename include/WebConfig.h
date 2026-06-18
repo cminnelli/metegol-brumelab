@@ -30,7 +30,7 @@ struct Config {
     uint8_t  calienteGoles;           // total goles para "caliente" (default 4)
     uint16_t inicioSegs;              // seg de INICIO (default 30)
     uint16_t primerosMinsSegs;        // seg de PRIMEROS_MINUTOS (default 120)
-    uint8_t  ultimoTramoPorc;         // % tiempo restante para ultimo_tramo (default 10)
+    uint16_t ultimoTramoSegs;         // seg restantes para ultimo_tramo en modo tiempo (default 60)
     uint16_t umbralAburridoSegs;      // seg sin goles para ABURRIDO aunque haya goleada (default 180)
 
     // Comentarista — rangos por estado (pistas 01–54)
