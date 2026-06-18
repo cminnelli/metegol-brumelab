@@ -40,13 +40,16 @@ static const RangoAudio& rangoDeEstado(EstadoPartido e) {
 
 // ── Determinación del estado ──────────────────────────────────────────────────
 
+static uint32_t _inicioFiredAt = 0;
+
 static EstadoPartido determinarEstado(const Partido& p) {
     uint32_t elapsed = millis() - p.inicio;
     uint8_t  diff    = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
     uint8_t  total   = p.goles[0] + p.goles[1];
 
-    // 1. Primeros minutos
-    if (elapsed < (uint32_t)config.primerosMinsSegs * 1000)
+    // 1. Primeros minutos — cuenta desde que el comentario de inicio se disparó
+    uint32_t refInicio = (_inicioFiredAt > 0) ? _inicioFiredAt : p.inicio;
+    if ((millis() - refInicio) < (uint32_t)config.primerosMinsSegs * 1000UL)
         return EstadoPartido::PRIMEROS_MINUTOS;
 
     // 3. Último tramo — lógica distinta según modo de juego
@@ -195,7 +198,8 @@ void comentaristaLoop(const Partido& partido) {
 
     if (_inicioPendiente) {
         _inicioPendiente = false;
-        reproducir("COM", "inicio", config.comentInicio);  // primer track siempre de rango inicio
+        _inicioFiredAt   = millis();
+        reproducir("COM", "inicio", config.comentInicio);
         programarProximo();
         return;
     }
@@ -206,6 +210,7 @@ void comentaristaLoop(const Partido& partido) {
 void comentaristaReiniciar() {
     _iniciado        = false;
     _inicioPendiente = false;
+    _inicioFiredAt   = 0;
 }
 
 void comentaristaOnGol(const Partido& partido) {

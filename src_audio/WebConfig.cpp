@@ -242,9 +242,13 @@ static const char HTML[] PROGMEM = R"rawhtml(
   .rl { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
   .rd { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
   .rd.g { background: var(--pink); }
-  .save-wrap { margin: 18px auto; text-align: center; }
-  .btn-save { padding: 13px 52px; background: linear-gradient(90deg,var(--accent),#0097a7); border: none; border-radius: 30px; color: #000; font-weight: 800; font-size: .92rem; letter-spacing: 1.5px; cursor: pointer; box-shadow: 0 4px 24px rgba(0,229,255,.22); transition: opacity .15s,transform .12s; }
-  .btn-save:active { opacity: .8; transform: scale(.98); }
+  .save-bar { margin-top: 20px; padding: 12px 0 4px; text-align: center; }
+  .btn-save { padding: 14px 64px; background: linear-gradient(90deg,var(--accent),#0097a7); border: none; border-radius: 32px; color: #000; font-weight: 800; font-size: .95rem; letter-spacing: 2px; cursor: pointer; box-shadow: 0 0 0 1px rgba(0,229,255,.3), 0 8px 32px rgba(0,229,255,.35); transition: opacity .15s,transform .12s,box-shadow .15s; }
+  .btn-save:hover { box-shadow: 0 0 0 2px rgba(0,229,255,.6), 0 10px 40px rgba(0,229,255,.5); }
+  .btn-save:active { opacity: .85; transform: scale(.97); }
+  .sec-lbl { font-size: .61rem; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 11px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .rng-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media(max-width:480px){ .rng-grid { grid-template-columns: 1fr; } }
   #toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #000; padding: 10px 28px; border-radius: 30px; font-weight: 700; font-size: .86rem; transition: transform .26s; pointer-events: none; white-space: nowrap; z-index: 9999; }
   #toast.show { transform: translateX(-50%) translateY(0); }
 </style>
@@ -291,21 +295,16 @@ static const char HTML[] PROGMEM = R"rawhtml(
 </div>
 
 <form id="cfg" method="POST" action="/save">
-<div class="save-wrap" style="margin-bottom:16px">
-  <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
-</div>
 <div class="grid">
 
   <div class="card">
-    <h2>🔊 Voz — SP1</h2>
+    <h2>🔊 Audio</h2>
+    <p class="sec-lbl" style="color:var(--celeste)">SP1 — Comentarios</p>
     <div class="field">
       <label>Volumen <b id="vv">%VOL_VOZ%</b></label>
       <input type="range" name="volumenVoz" min="0" max="30" value="%VOL_VOZ%" oninput="sl(this,'vv')">
     </div>
-  </div>
-
-  <div class="card">
-    <h2>🎵 Ambiente — SP2</h2>
+    <p class="sec-lbl" style="color:var(--muted);margin-top:14px">SP2 — Ambiente</p>
     <div class="field">
       <label>Volumen <b id="va">%VOL_AMB%</b></label>
       <input type="range" name="volumenAmbiente" min="0" max="30" value="%VOL_AMB%" oninput="sl(this,'va')">
@@ -360,7 +359,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
     </div>
     <div class="field">
       <label>Primeros minutos seg <b id="pms">%PRIM_MINS_SEGS%</b></label>
-      <input type="range" name="primerosMinsSegs" min="30" max="300" value="%PRIM_MINS_SEGS%" oninput="sl(this,'pms')">
+      <input type="range" name="primerosMinsSegs" min="5" max="180" value="%PRIM_MINS_SEGS%" oninput="sl(this,'pms')">
     </div>
     <div class="field">
       <label>Sin goles → aburrido seg <b id="uas">%UMBRAL_ABUR%</b></label>
@@ -374,32 +373,43 @@ static const char HTML[] PROGMEM = R"rawhtml(
 
   <div class="card cr" style="grid-column:1/-1">
     <h2>🎵 Rangos de audio — pistas MP3</h2>
-    <table class="rt">
-      <thead><tr><th>Estado / Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
-      <tbody>
-        <tr><td colspan="3" class="rs">Comentarios</td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>inicio</span></td><td><input class="ni" type="number" name="cInD" min="0" max="255" value="%C_IN_D%"></td><td><input class="ni" type="number" name="cInH" min="0" max="255" value="%C_IN_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>primeros min.</span></td><td><input class="ni" type="number" name="cPrD" min="0" max="255" value="%C_PR_D%"></td><td><input class="ni" type="number" name="cPrH" min="0" max="255" value="%C_PR_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>parejo</span></td><td><input class="ni" type="number" name="cPaD" min="0" max="255" value="%C_PA_D%"></td><td><input class="ni" type="number" name="cPaH" min="0" max="255" value="%C_PA_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>caliente</span></td><td><input class="ni" type="number" name="cCaD" min="0" max="255" value="%C_CA_D%"></td><td><input class="ni" type="number" name="cCaH" min="0" max="255" value="%C_CA_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>goleada</span></td><td><input class="ni" type="number" name="cGoD" min="0" max="255" value="%C_GO_D%"></td><td><input class="ni" type="number" name="cGoH" min="0" max="255" value="%C_GO_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>definido</span></td><td><input class="ni" type="number" name="cDeD" min="0" max="255" value="%C_DE_D%"></td><td><input class="ni" type="number" name="cDeH" min="0" max="255" value="%C_DE_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>último tramo</span></td><td><input class="ni" type="number" name="cUtD" min="0" max="255" value="%C_UT_D%"></td><td><input class="ni" type="number" name="cUtH" min="0" max="255" value="%C_UT_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>aburrido</span></td><td><input class="ni" type="number" name="cAbD" min="0" max="255" value="%C_AB_D%"></td><td><input class="ni" type="number" name="cAbH" min="0" max="255" value="%C_AB_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd"></span>tranquilo</span></td><td><input class="ni" type="number" name="cTrD" min="0" max="255" value="%C_TR_D%"></td><td><input class="ni" type="number" name="cTrH" min="0" max="255" value="%C_TR_H%"></td></tr>
-        <tr><td colspan="3" class="rs">Goles ⚽</td></tr>
-        <tr><td><span class="rl"><span class="rd g"></span>normal</span></td><td><input class="ni" type="number" name="gNorD" min="0" max="255" value="%G_NOR_D%"></td><td><input class="ni" type="number" name="gNorH" min="0" max="255" value="%G_NOR_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd g"></span>efusivo</span></td><td><input class="ni" type="number" name="gEfD" min="0" max="255" value="%G_EF_D%"></td><td><input class="ni" type="number" name="gEfH" min="0" max="255" value="%G_EF_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd g"></span>empate</span></td><td><input class="ni" type="number" name="gEmD" min="0" max="255" value="%G_EM_D%"></td><td><input class="ni" type="number" name="gEmH" min="0" max="255" value="%G_EM_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd g"></span>caliente</span></td><td><input class="ni" type="number" name="gCaD" min="0" max="255" value="%G_CA_D%"></td><td><input class="ni" type="number" name="gCaH" min="0" max="255" value="%G_CA_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd g"></span>agónico</span></td><td><input class="ni" type="number" name="gAgD" min="0" max="255" value="%G_AG_D%"></td><td><input class="ni" type="number" name="gAgH" min="0" max="255" value="%G_AG_H%"></td></tr>
-        <tr><td><span class="rl"><span class="rd g"></span>agónico empate</span></td><td><input class="ni" type="number" name="gAeD" min="0" max="255" value="%G_AE_D%"></td><td><input class="ni" type="number" name="gAeH" min="0" max="255" value="%G_AE_H%"></td></tr>
-      </tbody>
-    </table>
+    <div class="rng-grid">
+      <div>
+        <p class="sec-lbl" style="color:var(--accent);padding-top:0">Comentarios</p>
+        <table class="rt">
+          <thead><tr><th>Estado</th><th>Desde</th><th>Hasta</th></tr></thead>
+          <tbody>
+            <tr><td><span class="rl"><span class="rd"></span>inicio</span></td><td><input class="ni" type="number" name="cInD" min="0" max="255" value="%C_IN_D%"></td><td><input class="ni" type="number" name="cInH" min="0" max="255" value="%C_IN_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>primeros min.</span></td><td><input class="ni" type="number" name="cPrD" min="0" max="255" value="%C_PR_D%"></td><td><input class="ni" type="number" name="cPrH" min="0" max="255" value="%C_PR_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>parejo</span></td><td><input class="ni" type="number" name="cPaD" min="0" max="255" value="%C_PA_D%"></td><td><input class="ni" type="number" name="cPaH" min="0" max="255" value="%C_PA_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>caliente</span></td><td><input class="ni" type="number" name="cCaD" min="0" max="255" value="%C_CA_D%"></td><td><input class="ni" type="number" name="cCaH" min="0" max="255" value="%C_CA_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>goleada</span></td><td><input class="ni" type="number" name="cGoD" min="0" max="255" value="%C_GO_D%"></td><td><input class="ni" type="number" name="cGoH" min="0" max="255" value="%C_GO_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>definido</span></td><td><input class="ni" type="number" name="cDeD" min="0" max="255" value="%C_DE_D%"></td><td><input class="ni" type="number" name="cDeH" min="0" max="255" value="%C_DE_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>último tramo</span></td><td><input class="ni" type="number" name="cUtD" min="0" max="255" value="%C_UT_D%"></td><td><input class="ni" type="number" name="cUtH" min="0" max="255" value="%C_UT_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>aburrido</span></td><td><input class="ni" type="number" name="cAbD" min="0" max="255" value="%C_AB_D%"></td><td><input class="ni" type="number" name="cAbH" min="0" max="255" value="%C_AB_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>tranquilo</span></td><td><input class="ni" type="number" name="cTrD" min="0" max="255" value="%C_TR_D%"></td><td><input class="ni" type="number" name="cTrH" min="0" max="255" value="%C_TR_H%"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <p class="sec-lbl" style="color:var(--pink);padding-top:0">Goles ⚽</p>
+        <table class="rt">
+          <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
+          <tbody>
+            <tr><td><span class="rl"><span class="rd g"></span>normal</span></td><td><input class="ni" type="number" name="gNorD" min="0" max="255" value="%G_NOR_D%"></td><td><input class="ni" type="number" name="gNorH" min="0" max="255" value="%G_NOR_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd g"></span>efusivo</span></td><td><input class="ni" type="number" name="gEfD" min="0" max="255" value="%G_EF_D%"></td><td><input class="ni" type="number" name="gEfH" min="0" max="255" value="%G_EF_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd g"></span>empate</span></td><td><input class="ni" type="number" name="gEmD" min="0" max="255" value="%G_EM_D%"></td><td><input class="ni" type="number" name="gEmH" min="0" max="255" value="%G_EM_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd g"></span>caliente</span></td><td><input class="ni" type="number" name="gCaD" min="0" max="255" value="%G_CA_D%"></td><td><input class="ni" type="number" name="gCaH" min="0" max="255" value="%G_CA_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd g"></span>agónico</span></td><td><input class="ni" type="number" name="gAgD" min="0" max="255" value="%G_AG_D%"></td><td><input class="ni" type="number" name="gAgH" min="0" max="255" value="%G_AG_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd g"></span>ag. empate</span></td><td><input class="ni" type="number" name="gAeD" min="0" max="255" value="%G_AE_D%"></td><td><input class="ni" type="number" name="gAeH" min="0" max="255" value="%G_AE_H%"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
 </div>
-<div class="save-wrap">
+<div class="save-bar">
   <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
 </div>
 </form>
