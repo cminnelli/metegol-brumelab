@@ -4,6 +4,7 @@
 #include "Partido.h"
 #include "WebConfig.h"
 #include "Comentarista.h"
+#include "Display.h"
 #include "config.h"
 
 #define PIN_SENSOR_CELESTE 34   // equipo celeste
@@ -36,6 +37,7 @@ Partido partido;
 
 void setup() {
     Serial.begin(115200);
+    Serial.println("=== HOLA BRUMELAB! ===");
     Serial.println("[1] Serial OK");
     webConfigInit(&partido);  // carga config desde NVS + inicia AP WiFi (activa RF → entropía real)
     randomSeed(esp_random() ^ (uint32_t)micros());
@@ -78,12 +80,15 @@ void setup() {
     // Inicia SP2 con pista ambiente
     ambientePlay(config.pistaAmbiente);
 
+    displayInit();
+
     partido.resetear();
     Serial.println("[2] Sistema listo");
 }
 
 void loop() {
     webConfigLoop();
+    displayTick();
     vozPoll();
     ambientePoll();
 
@@ -100,12 +105,18 @@ void loop() {
             if (cur1 == LOW && prev1 == HIGH) {
                 ultimoGol1 = millis();
                 partido.registrarGol(0);
+                displayMarcador(partido.goles[0], partido.goles[1]);
+                if (partido.terminado) displayGanador(partido.ganador());
+                else                   displayGol();
             }
         }
         if (millis() - ultimoGol2 >= 2000) {
             if (cur2 == LOW && prev2 == HIGH) {
                 ultimoGol2 = millis();
                 partido.registrarGol(1);
+                displayMarcador(partido.goles[0], partido.goles[1]);
+                if (partido.terminado) displayGanador(partido.ganador());
+                else                   displayGol();
             }
         }
     }
@@ -142,6 +153,8 @@ void loop() {
                     partido.resetear();
                     partido.activo = true;
                     ambientePlay(config.pistaAmbiente);
+                    displayTexto("ARRANCAAA!", config.velocidadScroll);
+                    displayMarcador(0, 0);
                     Serial.println("[ENC] Partido iniciado");
                 } else if (partido.activo) {
                     partido.activo  = false;
@@ -150,6 +163,7 @@ void loop() {
                 } else if (partido.pausado) {
                     partido.activo  = true;
                     partido.pausado = false;
+                    displayMarcador(partido.goles[0], partido.goles[1]);
                     Serial.println("[ENC] Partido reanudado");
                 } else if (partido.terminado) {
                     comentaristaReiniciar();
@@ -157,6 +171,8 @@ void loop() {
                     partido.activo    = true;
                     partido.terminado = false;
                     ambientePlay(config.pistaAmbiente);
+                    displayTexto("ARRANCAAA!", config.velocidadScroll);
+                    displayMarcador(0, 0);
                     Serial.println("[ENC] Nuevo partido iniciado");
                 }
             } else {
@@ -164,6 +180,7 @@ void loop() {
                 partido.resetear();
                 partido.activo    = false;
                 partido.terminado = false;
+                displayMarcador(0, 0);
                 Serial.println("[ENC] Reset → En espera");
             }
             btnPending = 0;
@@ -176,6 +193,7 @@ void loop() {
             partido.activo    = false;
             partido.terminado = true;
             int8_t w = partido.ganador();
+            displayGanador(w);
             if (w == 0)      Serial.println("[JUEGO] ¡Ganó equipo 1! (tiempo)");
             else if (w == 1) Serial.println("[JUEGO] ¡Ganó equipo 2! (tiempo)");
             else             Serial.println("[JUEGO] ¡Empate! (tiempo)");
