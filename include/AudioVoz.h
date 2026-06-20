@@ -11,3 +11,6 @@ void vozPlay(Pista pista);
 void vozPlayTrack(uint8_t n);   // reproduce pista arbitraria (1-255)
 void vozPoll();
 void vozSetVolumen(uint8_t vol);
+void vozPitidoInicio();         // pitido de inicio (pistas 77-78)
+void vozPitidoFinal();          // pitido de fin    (pistas 79-80)
+bool vozIsBusy();               // true mientras SP1 está reproduciendo un track

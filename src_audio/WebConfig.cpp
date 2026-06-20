@@ -53,15 +53,20 @@ static void guardarWiFiCreds(const char* ssid, const char* pass) {
 
 // ── Persistencia ─────────────────────────────────────────────────────────────
 
+// Versión del esquema de NVS para SP2.
+// Incrementar cada vez que cambien los key names de SP2 — fuerza defaults frescos.
+#define CONFIG_SP2_VERSION 5
+
 static void cargarConfig() {
-    prefs.begin("metegol", true);
+    prefs.begin("metegol", false);   // false = lectura/escritura (necesario para guardar versión)
     config.volumenVoz      = prefs.getUChar("volVoz",     30);
     config.volumenAmbiente = prefs.getUChar("volAmb",     20);
-    config.modoJuego       = prefs.getUChar("modo",        0);
+    config.modoJuego       = 0;  // siempre arranca en goles
     config.golesMax        = prefs.getUChar("golesMax",    4);
     config.duracionMin     = prefs.getUShort("durMin",     5);
     config.brillo          = prefs.getUChar("brillo",      5);
     config.velocidadScroll = prefs.getUChar("velScroll",  40);
+    config.intervaloDisplay = prefs.getUChar("iDisp",      5);
     config.pistaAmbiente   = prefs.getUChar("pistaAmb",    3);
 
     // Comentarista — thresholds
@@ -106,6 +111,46 @@ static void cargarConfig() {
     config.golAgonico.hasta         = prefs.getUChar("gAgH",  73);
     config.golAgonicoEmpate.desde   = prefs.getUChar("gAeD",  74);
     config.golAgonicoEmpate.hasta   = prefs.getUChar("gAeH",  76);
+    // Pitidos
+    config.pitidoInicio.desde       = prefs.getUChar("pItD",  77);
+    config.pitidoInicio.hasta       = prefs.getUChar("pItH",  78);
+    config.pitidoFinal.desde        = prefs.getUChar("pFiD",  79);
+    config.pitidoFinal.hasta        = prefs.getUChar("pFiH",  80);
+    // Finales
+    config.finalEmpate.desde        = prefs.getUChar("fEmD",  81);
+    config.finalEmpate.hasta        = prefs.getUChar("fEmH",  82);
+    config.finalAplastante.desde    = prefs.getUChar("fApD",  83);
+    config.finalAplastante.hasta    = prefs.getUChar("fApH",  84);
+    config.finalAjustada.desde      = prefs.getUChar("fAjD",  85);
+    config.finalAjustada.hasta      = prefs.getUChar("fAjH",  86);
+    config.finalNormal.desde        = prefs.getUChar("fNoD",  87);
+    config.finalNormal.hasta        = prefs.getUChar("fNoH",  88);
+    // SP2 — ambiente reactivo
+    // Si la versión NVS es anterior a CONFIG_SP2_VERSION, los key names cambiaron:
+    // se ignoran los valores guardados y se usan defaults, evitando basura de sesiones viejas.
+    uint8_t sp2Ver = prefs.getUChar("sp2Ver", 0);
+    if (sp2Ver < CONFIG_SP2_VERSION) {
+        config.ambienteGenerico = {1, 4};
+        config.hinchadaMusica   = {5, 8};
+        config.momentoCaliente  = {9, 11};
+        config.ambienteGol      = {12, 17};
+        // Guarda la versión y los defaults para que el próximo boot los cargue normalmente
+        prefs.putUChar("sp2Ver", CONFIG_SP2_VERSION);
+        prefs.putUChar("aGe4D",  1);  prefs.putUChar("aGe4H",  4);
+        prefs.putUChar("hMu4D",  5);  prefs.putUChar("hMu4H",  8);
+        prefs.putUChar("mCa4D",  9);  prefs.putUChar("mCa4H", 11);
+        prefs.putUChar("aGoD",  12);  prefs.putUChar("aGoH",  17);
+        Serial.printf("\n[Config] SP2 reseteado a defaults (sp2Ver %d → %d)\n", sp2Ver, CONFIG_SP2_VERSION);
+    } else {
+        config.ambienteGenerico.desde = prefs.getUChar("aGe4D",  1);
+        config.ambienteGenerico.hasta = prefs.getUChar("aGe4H",  4);
+        config.hinchadaMusica.desde   = prefs.getUChar("hMu4D",  5);
+        config.hinchadaMusica.hasta   = prefs.getUChar("hMu4H",  8);
+        config.momentoCaliente.desde  = prefs.getUChar("mCa4D",  9);
+        config.momentoCaliente.hasta  = prefs.getUChar("mCa4H", 11);
+        config.ambienteGol.desde      = prefs.getUChar("aGoD",  12);
+        config.ambienteGol.hasta      = prefs.getUChar("aGoH",  17);
+    }
     prefs.end();
 }
 
@@ -113,11 +158,12 @@ static void guardarConfig() {
     prefs.begin("metegol", false);
     prefs.putUChar("volVoz",    config.volumenVoz);
     prefs.putUChar("volAmb",    config.volumenAmbiente);
-    prefs.putUChar("modo",      config.modoJuego);
+    // modoJuego no se persiste — siempre arranca en goles
     prefs.putUChar("golesMax",  config.golesMax);
     prefs.putUShort("durMin",   config.duracionMin);
     prefs.putUChar("brillo",    config.brillo);
     prefs.putUChar("velScroll", config.velocidadScroll);
+    prefs.putUChar("iDisp",     config.intervaloDisplay);
     prefs.putUChar("pistaAmb",  config.pistaAmbiente);
 
     // Comentarista — thresholds
@@ -162,6 +208,29 @@ static void guardarConfig() {
     prefs.putUChar("gAgH",  config.golAgonico.hasta);
     prefs.putUChar("gAeD",  config.golAgonicoEmpate.desde);
     prefs.putUChar("gAeH",  config.golAgonicoEmpate.hasta);
+    // Pitidos
+    prefs.putUChar("pItD",  config.pitidoInicio.desde);
+    prefs.putUChar("pItH",  config.pitidoInicio.hasta);
+    prefs.putUChar("pFiD",  config.pitidoFinal.desde);
+    prefs.putUChar("pFiH",  config.pitidoFinal.hasta);
+    // Finales
+    prefs.putUChar("fEmD",  config.finalEmpate.desde);
+    prefs.putUChar("fEmH",  config.finalEmpate.hasta);
+    prefs.putUChar("fApD",  config.finalAplastante.desde);
+    prefs.putUChar("fApH",  config.finalAplastante.hasta);
+    prefs.putUChar("fAjD",  config.finalAjustada.desde);
+    prefs.putUChar("fAjH",  config.finalAjustada.hasta);
+    prefs.putUChar("fNoD",  config.finalNormal.desde);
+    prefs.putUChar("fNoH",  config.finalNormal.hasta);
+    // SP2 — ambiente reactivo
+    prefs.putUChar("aGe4D", config.ambienteGenerico.desde);
+    prefs.putUChar("aGe4H", config.ambienteGenerico.hasta);
+    prefs.putUChar("hMu4D", config.hinchadaMusica.desde);
+    prefs.putUChar("hMu4H", config.hinchadaMusica.hasta);
+    prefs.putUChar("mCa4D", config.momentoCaliente.desde);
+    prefs.putUChar("mCa4H", config.momentoCaliente.hasta);
+    prefs.putUChar("aGoD",  config.ambienteGol.desde);
+    prefs.putUChar("aGoH",  config.ambienteGol.hasta);
     prefs.end();
 }
 
@@ -251,6 +320,9 @@ static const char HTML[] PROGMEM = R"rawhtml(
   @media(max-width:480px){ .rng-grid { grid-template-columns: 1fr; } }
   #toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #000; padding: 10px 28px; border-radius: 30px; font-weight: 700; font-size: .86rem; transition: transform .26s; pointer-events: none; white-space: nowrap; z-index: 9999; }
   #toast.show { transform: translateX(-50%) translateY(0); }
+  #fab-save { position: fixed; bottom: 22px; right: 22px; padding: 14px 22px; background: linear-gradient(135deg,var(--accent),#0097a7); border: none; border-radius: 50px; color: #000; font-weight: 800; font-size: .82rem; letter-spacing: 1.5px; cursor: pointer; box-shadow: 0 4px 24px rgba(0,229,255,.45); z-index: 9998; transition: transform .12s, box-shadow .15s; }
+  #fab-save:hover { transform: scale(1.05); box-shadow: 0 6px 32px rgba(0,229,255,.65); }
+  #fab-save:active { transform: scale(.96); }
 </style>
 </head>
 <body>
@@ -309,10 +381,6 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <label>Volumen <b id="va">%VOL_AMB%</b></label>
       <input type="range" name="volumenAmbiente" min="0" max="30" value="%VOL_AMB%" oninput="sl(this,'va')">
     </div>
-    <div class="field">
-      <label>Pista <b id="pa">%PISTA_AMB%</b></label>
-      <input type="range" name="pistaAmbiente" min="1" max="3" value="%PISTA_AMB%" oninput="sl(this,'pa')">
-    </div>
   </div>
 
   <div class="card cg">
@@ -332,6 +400,10 @@ static const char HTML[] PROGMEM = R"rawhtml(
     <div class="field" id="row-tiempo">
       <label>Duración (min) <b id="dm">%DUR_MIN%</b></label>
       <input type="range" name="duracionMin" min="3" max="8" value="%DUR_MIN%" oninput="sl(this,'dm')">
+    </div>
+    <div class="field">
+      <label>Cambio display seg <b id="id">%INTERV_DISP%</b></label>
+      <input type="range" name="intervaloDisplay" min="2" max="30" value="%INTERV_DISP%" oninput="sl(this,'id')">
     </div>
   </div>
 
@@ -408,11 +480,56 @@ static const char HTML[] PROGMEM = R"rawhtml(
     </div>
   </div>
 
+  <div class="card cr" style="grid-column:1/-1">
+    <h2>🔔 Pitidos &amp; Finales &amp; SP2</h2>
+    <div class="rng-grid">
+      <div>
+        <p class="sec-lbl" style="color:var(--accent);padding-top:0">Pitidos</p>
+        <table class="rt">
+          <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
+          <tbody>
+            <tr><td><span class="rl">inicio</span></td><td><input class="ni" type="number" name="pItD" min="0" max="255" value="%P_IT_D%"></td><td><input class="ni" type="number" name="pItH" min="0" max="255" value="%P_IT_H%"></td></tr>
+            <tr><td><span class="rl">final</span></td><td><input class="ni" type="number" name="pFiD" min="0" max="255" value="%P_FI_D%"></td><td><input class="ni" type="number" name="pFiH" min="0" max="255" value="%P_FI_H%"></td></tr>
+          </tbody>
+        </table>
+        <p class="sec-lbl" style="color:var(--pink);padding-top:12px">Final del partido</p>
+        <table class="rt">
+          <thead><tr><th>Resultado</th><th>Desde</th><th>Hasta</th></tr></thead>
+          <tbody>
+            <tr><td><span class="rl">empate</span></td><td><input class="ni" type="number" name="fEmD" min="0" max="255" value="%F_EM_D%"></td><td><input class="ni" type="number" name="fEmH" min="0" max="255" value="%F_EM_H%"></td></tr>
+            <tr><td><span class="rl">aplastante</span></td><td><input class="ni" type="number" name="fApD" min="0" max="255" value="%F_AP_D%"></td><td><input class="ni" type="number" name="fApH" min="0" max="255" value="%F_AP_H%"></td></tr>
+            <tr><td><span class="rl">ajustada</span></td><td><input class="ni" type="number" name="fAjD" min="0" max="255" value="%F_AJ_D%"></td><td><input class="ni" type="number" name="fAjH" min="0" max="255" value="%F_AJ_H%"></td></tr>
+            <tr><td><span class="rl">normal</span></td><td><input class="ni" type="number" name="fNoD" min="0" max="255" value="%F_NO_D%"></td><td><input class="ni" type="number" name="fNoH" min="0" max="255" value="%F_NO_H%"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <p class="sec-lbl" style="color:#4caf50;padding-top:0">SP2 — Ambiente (pistas 1–17)</p>
+        <p style="font-size:.72rem;color:var(--muted);margin-bottom:10px;line-height:1.5">
+          Ambiente genérico suena la mayor parte del partido.<br>
+          Hinchada suena <b style="color:var(--text)">1 sola vez</b> por partido (tras el 1er gol).<br>
+          Caliente suena <b style="color:var(--text)">máx. 2 veces</b>, solo si el partido está caliente.<br>
+          Reacción gol suena instantáneo en cada gol.
+        </p>
+        <table class="rt">
+          <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
+          <tbody>
+            <tr><td><span class="rl">genérico (normal)</span></td><td><input class="ni" type="number" name="aGeD" min="1" max="255" value="%A_GE_D%"></td><td><input class="ni" type="number" name="aGeH" min="1" max="255" value="%A_GE_H%"></td></tr>
+            <tr><td><span class="rl">hinchada (1x)</span></td><td><input class="ni" type="number" name="hMuD" min="1" max="255" value="%H_MU_D%"></td><td><input class="ni" type="number" name="hMuH" min="1" max="255" value="%H_MU_H%"></td></tr>
+            <tr><td><span class="rl">caliente (máx 2x)</span></td><td><input class="ni" type="number" name="mCaD" min="1" max="255" value="%M_CA_D%"></td><td><input class="ni" type="number" name="mCaH" min="1" max="255" value="%M_CA_H%"></td></tr>
+            <tr><td><span class="rl">reacción gol</span></td><td><input class="ni" type="number" name="aGoD" min="1" max="255" value="%A_GO_D%"></td><td><input class="ni" type="number" name="aGoH" min="1" max="255" value="%A_GO_H%"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div>
 <div class="save-bar">
   <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
 </div>
 </form>
+<button id="fab-save" onclick="document.getElementById('cfg').submit()">💾 GUARDAR</button>
 
 <div class="grid" style="margin-top:14px">
   <div class="card cw" id="wifi-card">
@@ -573,8 +690,9 @@ static String buildPage() {
     html.replace("%MODO%",       String(config.modoJuego));
     html.replace("%MODO_GOLES_ACTIVE%", config.modoJuego == 0 ? "active" : "");
     html.replace("%MODO_TIEMPO_ACTIVE%", config.modoJuego == 1 ? "active" : "");
-    html.replace("%GOLES_MAX%",  String(config.golesMax));
-    html.replace("%DUR_MIN%",    String(config.duracionMin));
+    html.replace("%GOLES_MAX%",    String(config.golesMax));
+    html.replace("%DUR_MIN%",      String(config.duracionMin));
+    html.replace("%INTERV_DISP%",  String(config.intervaloDisplay));
     html.replace("%BRILLO%",     String(config.brillo));
     html.replace("%VEL_SCROLL%", String(config.velocidadScroll));
     // Comentarista — thresholds
@@ -619,24 +737,48 @@ static String buildPage() {
     html.replace("%G_AG_H%",  String(config.golAgonico.hasta));
     html.replace("%G_AE_D%",  String(config.golAgonicoEmpate.desde));
     html.replace("%G_AE_H%",  String(config.golAgonicoEmpate.hasta));
+    // Pitidos
+    html.replace("%P_IT_D%",  String(config.pitidoInicio.desde));
+    html.replace("%P_IT_H%",  String(config.pitidoInicio.hasta));
+    html.replace("%P_FI_D%",  String(config.pitidoFinal.desde));
+    html.replace("%P_FI_H%",  String(config.pitidoFinal.hasta));
+    // Finales
+    html.replace("%F_EM_D%",  String(config.finalEmpate.desde));
+    html.replace("%F_EM_H%",  String(config.finalEmpate.hasta));
+    html.replace("%F_AP_D%",  String(config.finalAplastante.desde));
+    html.replace("%F_AP_H%",  String(config.finalAplastante.hasta));
+    html.replace("%F_AJ_D%",  String(config.finalAjustada.desde));
+    html.replace("%F_AJ_H%",  String(config.finalAjustada.hasta));
+    html.replace("%F_NO_D%",  String(config.finalNormal.desde));
+    html.replace("%F_NO_H%",  String(config.finalNormal.hasta));
+    // SP2 ambiente
+    html.replace("%A_GE_D%",  String(config.ambienteGenerico.desde));
+    html.replace("%A_GE_H%",  String(config.ambienteGenerico.hasta));
+    html.replace("%H_MU_D%",  String(config.hinchadaMusica.desde));
+    html.replace("%H_MU_H%",  String(config.hinchadaMusica.hasta));
+    html.replace("%M_CA_D%",  String(config.momentoCaliente.desde));
+    html.replace("%M_CA_H%",  String(config.momentoCaliente.hasta));
+    html.replace("%A_GO_D%",  String(config.ambienteGol.desde));
+    html.replace("%A_GO_H%",  String(config.ambienteGol.hasta));
     return html;
 }
 
 static void handleRoot() {
-    Serial.printf("[WEB] GET / — %s\n", server.client().remoteIP().toString().c_str());
+    Serial.printf("\n[WEB] GET / — %s\n", server.client().remoteIP().toString().c_str());
     server.send(200, "text/html", buildPage());
 }
 
 static void handleSave() {
-    Serial.printf("[WEB] POST /save — %s\n", server.client().remoteIP().toString().c_str());
+    Serial.printf("\n[WEB] POST /save — %s\n", server.client().remoteIP().toString().c_str());
     if (server.hasArg("volumenVoz"))      config.volumenVoz      = server.arg("volumenVoz").toInt();
     if (server.hasArg("volumenAmbiente")) config.volumenAmbiente = server.arg("volumenAmbiente").toInt();
     if (server.hasArg("modoJuego"))       config.modoJuego       = server.arg("modoJuego").toInt();
     if (server.hasArg("golesMax"))        config.golesMax        = constrain(server.arg("golesMax").toInt(), 4, 10);
     if (server.hasArg("duracionMin"))     config.duracionMin     = constrain(server.arg("duracionMin").toInt(), 3, 8);
-    if (server.hasArg("brillo"))          config.brillo          = server.arg("brillo").toInt();
-    if (server.hasArg("velocidadScroll")) config.velocidadScroll = server.arg("velocidadScroll").toInt();
-    if (server.hasArg("pistaAmbiente"))   config.pistaAmbiente   = server.arg("pistaAmbiente").toInt();
+    if (server.hasArg("brillo"))           config.brillo           = server.arg("brillo").toInt();
+    if (server.hasArg("velocidadScroll"))  config.velocidadScroll  = server.arg("velocidadScroll").toInt();
+    if (server.hasArg("intervaloDisplay")) config.intervaloDisplay = constrain(server.arg("intervaloDisplay").toInt(), 2, 30);
+    if (server.hasArg("pistaAmbiente"))    config.pistaAmbiente    = server.arg("pistaAmbiente").toInt();
     // Comentarista — thresholds
     if (server.hasArg("intervaloComentariosMin")) config.intervaloComentariosMin = server.arg("intervaloComentariosMin").toInt();
     if (server.hasArg("intervaloComentariosMax")) config.intervaloComentariosMax = server.arg("intervaloComentariosMax").toInt();
@@ -679,10 +821,33 @@ static void handleSave() {
     if (server.hasArg("gAgH"))  config.golAgonico.hasta           = server.arg("gAgH").toInt();
     if (server.hasArg("gAeD"))  config.golAgonicoEmpate.desde     = server.arg("gAeD").toInt();
     if (server.hasArg("gAeH"))  config.golAgonicoEmpate.hasta     = server.arg("gAeH").toInt();
+    // Pitidos
+    if (server.hasArg("pItD"))  config.pitidoInicio.desde         = server.arg("pItD").toInt();
+    if (server.hasArg("pItH"))  config.pitidoInicio.hasta         = server.arg("pItH").toInt();
+    if (server.hasArg("pFiD"))  config.pitidoFinal.desde          = server.arg("pFiD").toInt();
+    if (server.hasArg("pFiH"))  config.pitidoFinal.hasta          = server.arg("pFiH").toInt();
+    // Finales
+    if (server.hasArg("fEmD"))  config.finalEmpate.desde          = server.arg("fEmD").toInt();
+    if (server.hasArg("fEmH"))  config.finalEmpate.hasta          = server.arg("fEmH").toInt();
+    if (server.hasArg("fApD"))  config.finalAplastante.desde      = server.arg("fApD").toInt();
+    if (server.hasArg("fApH"))  config.finalAplastante.hasta      = server.arg("fApH").toInt();
+    if (server.hasArg("fAjD"))  config.finalAjustada.desde        = server.arg("fAjD").toInt();
+    if (server.hasArg("fAjH"))  config.finalAjustada.hasta        = server.arg("fAjH").toInt();
+    if (server.hasArg("fNoD"))  config.finalNormal.desde          = server.arg("fNoD").toInt();
+    if (server.hasArg("fNoH"))  config.finalNormal.hasta          = server.arg("fNoH").toInt();
+    // SP2 ambiente — sin restricción de rango (el usuario define cuántas pistas tiene en su SD)
+    if (server.hasArg("aGeD"))  config.ambienteGenerico.desde  = server.arg("aGeD").toInt();
+    if (server.hasArg("aGeH"))  config.ambienteGenerico.hasta  = server.arg("aGeH").toInt();
+    if (server.hasArg("hMuD"))  config.hinchadaMusica.desde    = server.arg("hMuD").toInt();
+    if (server.hasArg("hMuH"))  config.hinchadaMusica.hasta    = server.arg("hMuH").toInt();
+    if (server.hasArg("mCaD"))  config.momentoCaliente.desde   = server.arg("mCaD").toInt();
+    if (server.hasArg("mCaH"))  config.momentoCaliente.hasta   = server.arg("mCaH").toInt();
+    if (server.hasArg("aGoD"))  config.ambienteGol.desde       = server.arg("aGoD").toInt();
+    if (server.hasArg("aGoH"))  config.ambienteGol.hasta       = server.arg("aGoH").toInt();
 
     guardarConfig();
     _pendingVolUpdate = true;  // aplica volumen en el próximo loop, no aquí
-    Serial.printf("[Config] Guardada — SP1 vol:%d SP2 vol:%d modo:%s\n",
+    Serial.printf("\n[Config] Guardada — SP1 vol:%d SP2 vol:%d modo:%s\n",
         config.volumenVoz, config.volumenAmbiente,
         config.modoJuego == 0 ? "goles" : "tiempo");
     server.send(200, "application/json", "{\"ok\":true}");
@@ -724,17 +889,18 @@ static void handleStart() {
         if (_partido->pausado) {
             _partido->activo  = true;
             _partido->pausado = false;
-            Serial.println("[JUEGO] Partido reanudado (web)");
+            Serial.println("\n[JUEGO] Partido reanudado (web)");
         } else {
+            vozPitidoInicio();
             comentaristaReiniciar();
+            ambienteReiniciar();
             _partido->resetear();
             _partido->activo    = true;
             _partido->terminado = false;
-            Serial.println("[JUEGO] ¡Partido iniciado!");
-            ambientePlay(config.pistaAmbiente);
+            Serial.println("\n[JUEGO] ¡Partido iniciado!");
         }
     } else {
-        ambientePlay(config.pistaAmbiente);
+        // SP2 arranca solo via ambienteActualizar() en el loop
     }
     server.send(200, "application/json", "{\"ok\":true}");
 }
@@ -743,13 +909,13 @@ static void handleStop() {
     if (_partido) {
         _partido->activo    = false;
         _partido->terminado = true;
-        Serial.println("[JUEGO] Partido detenido manualmente.");
+        Serial.println("\n[JUEGO] Partido detenido manualmente.");
     }
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handleConfigBrumeGet() {
-    Serial.printf("[WEB] GET /configBrume — %s\n", server.client().remoteIP().toString().c_str());
+    Serial.printf("\n[WEB] GET /configBrume — %s\n", server.client().remoteIP().toString().c_str());
     static char buf[900];
     snprintf(buf, sizeof(buf),
         "{"
@@ -813,7 +979,7 @@ void webConfigInit(Partido* p) {
     bool staOk = false;
     wl_status_t staStatus = WL_IDLE_STATUS;
     if (strlen(_staSSID) > 0) {
-        Serial.printf("[WiFi] Conectando a '%s'", _staSSID);
+        Serial.printf("\n[WiFi] Conectando a '%s'", _staSSID);
         WiFi.begin(_staSSID, _staPass);
         for (uint8_t i = 0; i < 30; i++) {   // 15 segundos máximo
             delay(500);
@@ -852,7 +1018,7 @@ void webConfigInit(Partido* p) {
         strlcpy(_staPass, pass.c_str(), sizeof(_staPass));
         guardarWiFiCreds(_staSSID, _staPass);
         WiFi.begin(_staSSID, _staPass);
-        Serial.printf("[WiFi] Intentando conectar a '%s'...\n", _staSSID);
+        Serial.printf("\n[WiFi] Intentando conectar a '%s'...\n", _staSSID);
         server.send(200, "application/json",
             "{\"msg\":\"Conectando... revisá el serial en 10 segundos\"}");
     });
@@ -935,7 +1101,7 @@ void webConfigLoop() {
         anunciarSTA();
     if (_staAnunciado && !WiFi.isConnected()) {
         _staAnunciado = false;
-        Serial.println("[WiFi] STA desconectado, reintentando...");
+        Serial.println("\n[WiFi] STA desconectado, reintentando...");
         WiFi.reconnect();
     }
 }

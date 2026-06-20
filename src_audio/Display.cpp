@@ -65,3 +65,16 @@ void displayGanador(int8_t w) {
     else             disp.displayScroll("Empate!",           PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
     _enScroll = true;
 }
+
+void displayModo(const char* texto) {
+    disp.displayScroll(texto, PA_LEFT, PA_SCROLL_RIGHT, config.velocidadScroll);
+    _enScroll = true;
+}
+
+void displayTiempo(uint32_t ms) {
+    static char buf[8];   // estático: MD_Parola guarda el puntero, no una copia
+    uint32_t seg = ms / 1000;
+    snprintf(buf, sizeof(buf), "%02lu:%02lu", seg / 60, seg % 60);
+    disp.displayScroll(buf, PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+    _enScroll = true;
+}

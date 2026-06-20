@@ -1,6 +1,7 @@
 #include "Comentarista.h"
 #include "WebConfig.h"
 #include "AudioVoz.h"
+#include "AudioAmbiente.h"
 #include <Arduino.h>
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
@@ -150,9 +151,13 @@ static uint16_t* getUsados(const RangoAudio& rango) {
 static uint32_t _proximoComentario = 0;
 static bool     _iniciado          = false;
 static bool     _inicioPendiente   = false;
+static uint32_t _finPendienteEn    = 0;
+static uint8_t  _golesFinales[2]   = {0, 0};
 
+// asBlock=true  → bloque separador (comentarios, final)
+// asBlock=false → línea hija sin separador (dentro del bloque GOL)
 static void reproducir(const char* prefix, const char* label,
-                       const RangoAudio& rango, int8_t hwOffset = 0) {
+                       const RangoAudio& rango, int8_t hwOffset = 1, bool asBlock = true) {
     if (rango.desde == 0 && rango.hasta == 0) return;
     if (rango.desde > rango.hasta)             return;
 
@@ -175,14 +180,19 @@ static void reproducir(const char* prefix, const char* label,
     uint8_t item = rango.desde + idx;
     if (usados) *usados |= (1u << idx);
 
-    Serial.printf("[%s] %s — pista %d\n", prefix, label, item);
+    if (asBlock) {
+        Serial.printf("\n──── SPK1 - COMENTARIO  ─────────────────────\n");
+        Serial.printf("     %-14s [%d-%d]  →  pista %d\n", label, rango.desde, rango.hasta, item);
+    } else {
+        Serial.printf("     SPK1-VOZ   %-12s [%d-%d]  →  pista %d\n", label, rango.desde, rango.hasta, item);
+    }
     vozPlayTrack((uint8_t)(item + hwOffset));
 }
 
 static void dispararComentario(const Partido& partido) {
     EstadoPartido     estado = determinarEstado(partido);
     const RangoAudio& rango  = rangoDeEstado(estado);
-    reproducir("COM", nombreEstado(estado), rango);
+    reproducir("COMENTARIO", nombreEstado(estado), rango, 1);
 }
 
 static void programarProximo() {
@@ -195,24 +205,52 @@ static void programarProximo() {
 // ── API pública ───────────────────────────────────────────────────────────────
 
 void comentaristaLoop(const Partido& partido) {
+    // Comentario de final pendiente (se dispara 4s después del pitido final)
+    if (_finPendienteEn > 0 && millis() >= _finPendienteEn) {
+        _finPendienteEn = 0;
+        uint8_t diff = (uint8_t)abs((int)_golesFinales[0] - (int)_golesFinales[1]);
+        bool    empate = (_golesFinales[0] == _golesFinales[1]);
+        const RangoAudio* r;
+        const char*       label;
+        if (empate) {
+            r = &config.finalEmpate;      label = "final_empate";
+        } else if (diff >= config.goleadaDiff) {
+            r = &config.finalAplastante;  label = "final_aplastante";
+        } else if (diff == 1) {
+            r = &config.finalAjustada;    label = "final_ajustada";
+        } else {
+            r = &config.finalNormal;      label = "final_normal";
+        }
+        reproducir("COMENTARIO", label, *r, 0);
+    }
+
     if (!partido.activo) {
-        _iniciado        = false;
-        _inicioPendiente = false;
+        if (!partido.pausado) {
+            // Fin real (terminado o en espera) — resetea para próxima partida
+            _iniciado        = false;
+            _inicioPendiente = false;
+        }
         return;
     }
     if (!_iniciado) {
         _iniciado          = true;
         _inicioPendiente   = true;
-        _proximoComentario = millis() + 4000UL;  // 4s antes del comentario de inicio
+        _proximoComentario = millis() + 500UL;   // dispara rápido — vozIsBusy espera que termine el pitido
         return;
     }
     if (millis() < _proximoComentario) return;
 
     if (_inicioPendiente) {
+        if (vozIsBusy()) { _proximoComentario = millis() + 2000UL; return; }
         _inicioPendiente = false;
         _inicioFiredAt   = millis();
-        reproducir("COM", "inicio", config.comentInicio);
+        reproducir("COMENTARIO", "inicio", config.comentInicio, 1);
         programarProximo();
+        return;
+    }
+    // Espera a que terminen: SP2 reacción gol Y SP1 comentario de gol (+ 2s margen)
+    if (strcmp(ambienteGetEstado(), "gol_reaccion") == 0 || vozIsBusy()) {
+        _proximoComentario = millis() + 2000UL;
         return;
     }
     dispararComentario(partido);
@@ -223,12 +261,18 @@ void comentaristaReiniciar() {
     _iniciado        = false;
     _inicioPendiente = false;
     _inicioFiredAt   = 0;
+    _finPendienteEn  = 0;
+}
+
+void comentaristaFinalPartido(const Partido& partido) {
+    _golesFinales[0] = partido.goles[0];
+    _golesFinales[1] = partido.goles[1];
+    _finPendienteEn  = millis() + 4000UL;
 }
 
 void comentaristaOnGol(const Partido& partido) {
-    // DFPlayer sobreescribe el track en curso — el gol siempre pisa cualquier comentario
     TipoGol tg = seleccionarTipoGol(partido);
-    reproducir("GOL", tg.nombre, tg.rango, -1);
+    reproducir("COMENTARIO", tg.nombre, tg.rango, 0, false);  // línea hija del bloque GOL
     _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
 }
 
@@ -243,16 +287,26 @@ const char* comentaristaGetEstado(const Partido& partido) {
 
 void comentaristaStats(const Partido& partido) {
     if (!partido.activo) return;
-    uint32_t elapsed = millis() - partido.inicio;
-    uint32_t mm      = elapsed / 60000;
-    uint32_t ss      = (elapsed % 60000) / 1000;
-    EstadoPartido e  = determinarEstado(partido);
-    uint8_t diff     = (uint8_t)abs((int)partido.goles[0] - (int)partido.goles[1]);
-    uint8_t total    = partido.goles[0] + partido.goles[1];
-    const char* estadoActivo = partido.activo ? nombreEstado(e) : (partido.terminado ? "terminado" : "en_espera");
-    Serial.printf("[STATS] %02lu:%02lu | %d-%d | %-13s | diff:%d total:%d | modo:%s\n",
-        (unsigned long)mm, (unsigned long)ss,
-        partido.goles[0], partido.goles[1],
-        estadoActivo, diff, total,
-        config.modoJuego == 0 ? "goles" : "tiempo");
+    uint32_t elapsed  = millis() - partido.inicio;
+    uint32_t mm       = elapsed / 60000;
+    uint32_t ss       = (elapsed % 60000) / 1000;
+    EstadoPartido e   = determinarEstado(partido);
+    uint8_t diff      = (uint8_t)abs((int)partido.goles[0] - (int)partido.goles[1]);
+    uint8_t total     = partido.goles[0] + partido.goles[1];
+    const char* modo  = config.modoJuego == 0 ? "GOLES" : "TIEMPO";
+    const char* est   = nombreEstado(e);
+
+    // Indicador visual del estado
+    const char* icono = "";
+    if      (strcmp(est, "caliente")     == 0) icono = " ♨";
+    else if (strcmp(est, "goleada")      == 0) icono = " !!";
+    else if (strcmp(est, "ultimo_tramo") == 0) icono = " !!";
+    else if (strcmp(est, "aburrido")     == 0) icono = " zz";
+
+    Serial.printf("\n──── %02lu:%02lu  [STATS]  ───────────────────────\n",
+        (unsigned long)mm, (unsigned long)ss);
+    Serial.printf("     %d  ─  %d   |  %s%s  [%s]\n",
+        partido.goles[0], partido.goles[1], est, icono, modo);
+    Serial.printf("     goles:%d  diff:%d  |  SP2: %s p:%d\n",
+        total, diff, ambienteGetEstado(), ambienteGetPista());
 }

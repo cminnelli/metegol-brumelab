@@ -1,5 +1,5 @@
 #include "AudioVoz.h"
-#include "config.h"
+#include "WebConfig.h"
 #include <Arduino.h>
 
 #define VOZ_TX 26
@@ -23,12 +23,31 @@ void vozPlay(Pista pista) {
     cmd(0x03, 0x00, (uint8_t)pista);
 }
 
+static bool _sp1Busy = false;
+
 void vozPlayTrack(uint8_t n) {
+    _sp1Busy = true;
     cmd(0x03, 0x00, n);
 }
 
+bool vozIsBusy() { return _sp1Busy; }
+
 void vozSetVolumen(uint8_t vol) {
     cmd(0x06, 0x00, vol);
+}
+
+void vozPitidoInicio() {
+    uint8_t n = config.pitidoInicio.desde + random(config.pitidoInicio.hasta - config.pitidoInicio.desde + 1);
+    Serial.printf("\n──── SPK1 - SILBATO  ────────────────────────\n");
+    Serial.printf("     inicio   pista %d\n", n);
+    vozPlayTrack(n);
+}
+
+void vozPitidoFinal() {
+    uint8_t n = config.pitidoFinal.desde + random(config.pitidoFinal.hasta - config.pitidoFinal.desde + 1);
+    Serial.printf("\n──── SPK1 - SILBATO  ────────────────────────\n");
+    Serial.printf("     final    pista %d\n", n);
+    vozPlayTrack(n);
 }
 
 void vozPoll() {
@@ -40,9 +59,9 @@ void vozPoll() {
         if (idx >= 10 && buf[9] == 0xEF) {
             uint8_t tipo = buf[3], val = buf[6];
             switch (tipo) {
-                case 0x3D: break;
-                case 0x3F: Serial.println("[SP1] SD online ✓");                 break;
-                case 0x40: if (val != 0x03) Serial.printf("[SP1] ✗ Error 0x%02X\n", val); break;
+                case 0x3D: _sp1Busy = false; break;
+                case 0x3F: Serial.println("\n[SPK1:VOZ] SD online ✓"); break;
+                case 0x40: if (val != 0x03) Serial.printf("\n[SPK1:VOZ] ✗ Error 0x%02X\n", val); break;
                 default: break;
             }
             idx = 0;

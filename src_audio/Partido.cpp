@@ -1,6 +1,5 @@
 #include "Partido.h"
 #include "WebConfig.h"
-#include "Comentarista.h"
 #include <stdio.h>
 #include <Arduino.h>
 
@@ -41,8 +40,6 @@ void Partido::registrarGol(uint8_t equipo) {
     char buf[16];
     getResultado(buf, sizeof(buf));
     Serial.printf("[JUEGO] Marcador: %s\n", buf);
-
-    comentaristaOnGol(*this);
 
     bool fin = (config.modoJuego == 0)
         ? (goles[0] >= config.golesMax || goles[1] >= config.golesMax)

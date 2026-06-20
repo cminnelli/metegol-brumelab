@@ -21,6 +21,7 @@ struct Config {
     // Display
     uint8_t  brillo;            // 0-15
     uint8_t  velocidadScroll;   // 10-100 ms/frame
+    uint8_t  intervaloDisplay;  // seg entre marcador↔tiempo en modo tiempo (default 5)
 
     // Comentarista — intervalo y thresholds
     uint16_t intervaloComentariosMin; // default 10
@@ -51,6 +52,20 @@ struct Config {
     RangoAudio golCaliente;           // {67, 70}
     RangoAudio golAgonico;            // {71, 73}
     RangoAudio golAgonicoEmpate;      // {74, 76}
+
+    // Pitidos
+    RangoAudio pitidoInicio;          // {77, 78}
+    RangoAudio pitidoFinal;           // {79, 80}
+    // Comentarios de fin de partido
+    RangoAudio finalEmpate;           // {81, 82}
+    RangoAudio finalAplastante;       // {83, 84}
+    RangoAudio finalAjustada;         // {85, 86}
+    RangoAudio finalNormal;           // {87, 88}
+    // SP2 — ambiente reactivo (pistas 1-17, SD card propia)
+    RangoAudio ambienteGenerico;      // {1, 4}
+    RangoAudio hinchadaMusica;        // {5, 8}
+    RangoAudio momentoCaliente;       // {9, 11}
+    RangoAudio ambienteGol;           // {12, 17}
 };
 
 extern Config config;
