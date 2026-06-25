@@ -75,3 +75,38 @@
 0074	GOL_AGONICO_EMPATE	¡GOOOOOOL! ¡EMPATE AGÓNICO! ¡NO LO PUEDO CREER!
 0075	GOL_AGONICO_EMPATE	¡GOOOOOOL! ¡Lo empató en una de las últimas del partido!
 0076	GOL_AGONICO_EMPATE	¡GOOOOOOL! ¡Rescató un empate imposible!
+0077	PITIDO_INICIO	Silbato
+0078	PITIDO_INICIO	Silbato
+0079	PITIDO_FINAL	Silbato doble
+0080	PITIDO_FINAL	Silbato doble
+0081	FINAL_EMPATE	Partido tan parejo que cualquier resultado hubiese parecido injusto. El empate les quedó cómodo a los dos.
+0082	FINAL_EMPATE	Más equilibrado que balanza de farmacia. Se fueron con la sensación de que puede ser parejo para cualquiera.
+0083	FINAL_APLASTANTE	Lo dominó de punta a punta. No hubo reacción, no hubo respuesta y casi tampoco hubo partido.
+0084	FINAL_APLASTANTE	La dio un baile bárbaro. De esos que después cuentan en el vestuario.
+0085	FINAL_AJUSTADA	Lo ganó porque alguien tenía que ganarlo. La diferencia fue mínima, pero suficiente.
+0086	FINAL_AJUSTADA	Se definió por un detalle. Partido chivo con pocos.
+0087	FINAL_NORMAL	Sin hacer ruido, hizo el trabajo y se llevó el premio.
+0088	FINAL_NORMAL	Sin lujos ni milagros. Hizo los deberes y se quedó con los puntos.
+0089	ULTIMO_TRAMO_EMPATE_GOLES	¡Entramos en zona de definición y esto sigue palo a palo!
+0090	ULTIMO_TRAMO_EMPATE_GOLES	¡Se vienen los segundos más calientes de un partido lleno de goles!
+0091	ULTIMO_TRAMO_EMPATE_GOLES	¡Ahora sí, cualquiera de los dos lo puede ganar!
+0092	ULTIMO_TRAMO_EMPATE_GOLES	¡No queda prácticamente nada y siguen sin sacarse diferencias!
+0093	ULTIMO_TRAMO_EMPATE_GOLES	¡Se viene un cierre para el infarto en un partido completamente abierto!
+0094	ULTIMO_TRAMO_EMPATE_GOLES	¡Estamos en la recta final y la mete gana!
+0095	ULTIMO_TRAMO_GOLEADA	¡Entramos en zona de definición y la remontada parece imposible!
+0096	ULTIMO_TRAMO_GOLEADA	¡Se vienen los últimos segundos y buscan liquidarlo por completo!
+0097	ULTIMO_TRAMO_GOLEADA	¡Ahora sí, estamos cerca del final y hay un claro dominador!
+0098	ULTIMO_TRAMO_GOLEADA	¡No queda prácticamente nada y la ventaja sigue siendo muy amplia!
+0099	ULTIMO_TRAMO_GOLEADA	¡Se viene el cierre de un partido que tiene un claro ganador!
+0100	ULTIMO_TRAMO_GOLEADA	¡Se acerca el cierre del partido y todo indica que la historia ya está escrita!
+0101	ULTIMO_TRAMO_AJUSTADO	¡Entramos en zona de definición y esto sigue todo o nada!
+0102	ULTIMO_TRAMO_AJUSTADO	¡Se vienen los segundos más calientes de todo el partido!
+0103	ULTIMO_TRAMO_AJUSTADO	¡Ahora sí, se juegan todo para empatarlo!
+0104	ULTIMO_TRAMO_AJUSTADO	¡No queda prácticamente nada y la diferencia sigue siendo mínima!
+0105	ULTIMO_TRAMO_AJUSTADO	¡Se viene un cierre para el infarto y un gol lo cambia todo!
+0106	ULTIMO_TRAMO_AJUSTADO	¡Estamos en la recta final y un solo gol puede cambiarlo todo!
+0107	ULTIMO_TRAMO_ABURRIDO	¡Entramos en zona de definición buscando una emoción que todavía no aparece!
+0108	ULTIMO_TRAMO_ABURRIDO	¡Se vienen los últimos segundos y cualquiera que se despierte puede ganar!
+0109	ULTIMO_TRAMO_ABURRIDO	¡Recta final del partido ahora sí, no queda margen para el error!
+0110	ULTIMO_TRAMO_ABURRIDO	¡Se viene el último tramo de un partido más cerrado que negocio en feriado!
+0111	ULTIMO_TRAMO_ABURRIDO	¡Estamos en la recta final y una jugada puede cambiarlo todo!

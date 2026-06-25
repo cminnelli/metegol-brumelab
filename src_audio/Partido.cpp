@@ -12,6 +12,8 @@ void Partido::resetear() {
     goles[1]  = 0;
     inicio    = millis();
     pausado   = false;
+    terminado = false;
+    ultimoGol = 0;
 }
 
 void Partido::getResultado(char* buf, size_t len) const {
@@ -51,6 +53,7 @@ void Partido::registrarGol(uint8_t equipo) {
         else if (w == 1) Serial.println("[JUEGO] ¡Ganó blanco!");
         else             Serial.println("[JUEGO] ¡Empate!");
         activo    = false;
+        pausado   = false;
         terminado = true;
         Serial.println("[JUEGO] Partido finalizado — esperando Start");
     }

@@ -4,6 +4,8 @@
 #include "Comentarista.h"
 #include <Arduino.h>
 
+extern void resetearDeteccionGoles();  // definida en main.cpp
+
 static Partido* _partido = nullptr;
 #include <WiFi.h>
 #include <WebServer.h>
@@ -75,6 +77,7 @@ static void cargarConfig() {
     config.intervaloStats          = prefs.getUShort("intervStats",    5);
     config.goleadaDiff             = prefs.getUChar("goleadaDiff",    3);  // 3+ goles de diff = goleada
     config.calienteGoles           = prefs.getUChar("calienteGol",    4);  // 4+ goles totales = puede ser caliente
+    config.hinchadaGol             = prefs.getUChar("hincGol",         2);  // suena hinchada tras el gol N
     config.inicioSegs              = prefs.getUShort("inicioSegs",   30);
     config.primerosMinsSegs        = prefs.getUShort("primMinsSegs",  20);  // 20s de apertura
     config.ultimoTramoSegs         = prefs.getUShort("ultiTramoSeg",  60);  // últimos 60s = tensión
@@ -92,8 +95,16 @@ static void cargarConfig() {
     config.comentGoleada.hasta      = prefs.getUChar("cGoH",  30);
     config.comentDefinido.desde     = prefs.getUChar("cDeD",  31);
     config.comentDefinido.hasta     = prefs.getUChar("cDeH",  36);
-    config.comentUltimoTramo.desde  = prefs.getUChar("cUtD",  37);
-    config.comentUltimoTramo.hasta  = prefs.getUChar("cUtH",  42);
+    config.comentUltimoTramoGeneral.desde      = prefs.getUChar("cUtGenD",  37);
+    config.comentUltimoTramoGeneral.hasta      = prefs.getUChar("cUtGenH",  42);
+    config.comentUltimoTramoEmpateGoles.desde  = prefs.getUChar("cUtEmpD",  89);
+    config.comentUltimoTramoEmpateGoles.hasta  = prefs.getUChar("cUtEmpH",  94);
+    config.comentUltimoTramoGoleada.desde      = prefs.getUChar("cUtGolD",  95);
+    config.comentUltimoTramoGoleada.hasta      = prefs.getUChar("cUtGolH", 100);
+    config.comentUltimoTramoAjustado.desde     = prefs.getUChar("cUtAjD",  101);
+    config.comentUltimoTramoAjustado.hasta     = prefs.getUChar("cUtAjH",  106);
+    config.comentUltimoTramoAburrido.desde     = prefs.getUChar("cUtAbD",  107);
+    config.comentUltimoTramoAburrido.hasta     = prefs.getUChar("cUtAbH",  111);
     config.comentAburrido.desde     = prefs.getUChar("cAbD",  43);
     config.comentAburrido.hasta     = prefs.getUChar("cAbH",  48);
     config.comentTranquilo.desde    = prefs.getUChar("cTrD",  49);
@@ -172,6 +183,7 @@ static void guardarConfig() {
     prefs.putUShort("intervStats",   config.intervaloStats);
     prefs.putUChar("goleadaDiff",    config.goleadaDiff);
     prefs.putUChar("calienteGol",    config.calienteGoles);
+    prefs.putUChar("hincGol",        config.hinchadaGol);
     prefs.putUShort("inicioSegs",    config.inicioSegs);
     prefs.putUShort("primMinsSegs",  config.primerosMinsSegs);
     prefs.putUShort("ultiTramoSeg",  config.ultimoTramoSegs);
@@ -189,8 +201,16 @@ static void guardarConfig() {
     prefs.putUChar("cGoH",  config.comentGoleada.hasta);
     prefs.putUChar("cDeD",  config.comentDefinido.desde);
     prefs.putUChar("cDeH",  config.comentDefinido.hasta);
-    prefs.putUChar("cUtD",  config.comentUltimoTramo.desde);
-    prefs.putUChar("cUtH",  config.comentUltimoTramo.hasta);
+    prefs.putUChar("cUtGenD", config.comentUltimoTramoGeneral.desde);
+    prefs.putUChar("cUtGenH", config.comentUltimoTramoGeneral.hasta);
+    prefs.putUChar("cUtEmpD", config.comentUltimoTramoEmpateGoles.desde);
+    prefs.putUChar("cUtEmpH", config.comentUltimoTramoEmpateGoles.hasta);
+    prefs.putUChar("cUtGolD", config.comentUltimoTramoGoleada.desde);
+    prefs.putUChar("cUtGolH", config.comentUltimoTramoGoleada.hasta);
+    prefs.putUChar("cUtAjD",  config.comentUltimoTramoAjustado.desde);
+    prefs.putUChar("cUtAjH",  config.comentUltimoTramoAjustado.hasta);
+    prefs.putUChar("cUtAbD",  config.comentUltimoTramoAburrido.desde);
+    prefs.putUChar("cUtAbH",  config.comentUltimoTramoAburrido.hasta);
     prefs.putUChar("cAbD",  config.comentAburrido.desde);
     prefs.putUChar("cAbH",  config.comentAburrido.hasta);
     prefs.putUChar("cTrD",  config.comentTranquilo.desde);
@@ -457,7 +477,11 @@ static const char HTML[] PROGMEM = R"rawhtml(
             <tr><td><span class="rl"><span class="rd"></span>caliente</span></td><td><input class="ni" type="number" name="cCaD" min="0" max="255" value="%C_CA_D%"></td><td><input class="ni" type="number" name="cCaH" min="0" max="255" value="%C_CA_H%"></td></tr>
             <tr><td><span class="rl"><span class="rd"></span>goleada</span></td><td><input class="ni" type="number" name="cGoD" min="0" max="255" value="%C_GO_D%"></td><td><input class="ni" type="number" name="cGoH" min="0" max="255" value="%C_GO_H%"></td></tr>
             <tr><td><span class="rl"><span class="rd"></span>definido</span></td><td><input class="ni" type="number" name="cDeD" min="0" max="255" value="%C_DE_D%"></td><td><input class="ni" type="number" name="cDeH" min="0" max="255" value="%C_DE_H%"></td></tr>
-            <tr><td><span class="rl"><span class="rd"></span>último tramo</span></td><td><input class="ni" type="number" name="cUtD" min="0" max="255" value="%C_UT_D%"></td><td><input class="ni" type="number" name="cUtH" min="0" max="255" value="%C_UT_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>ú.tramo empate c/goles</span></td><td><input class="ni" type="number" name="cUtEmpD" min="0" max="255" value="%C_UTEMP_D%"></td><td><input class="ni" type="number" name="cUtEmpH" min="0" max="255" value="%C_UTEMP_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>ú.tramo goleada</span></td><td><input class="ni" type="number" name="cUtGolD" min="0" max="255" value="%C_UTGOL_D%"></td><td><input class="ni" type="number" name="cUtGolH" min="0" max="255" value="%C_UTGOL_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>ú.tramo ajustado</span></td><td><input class="ni" type="number" name="cUtAjD" min="0" max="255" value="%C_UTAJ_D%"></td><td><input class="ni" type="number" name="cUtAjH" min="0" max="255" value="%C_UTAJ_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd"></span>ú.tramo aburrido</span></td><td><input class="ni" type="number" name="cUtAbD" min="0" max="255" value="%C_UTAB_D%"></td><td><input class="ni" type="number" name="cUtAbH" min="0" max="255" value="%C_UTAB_H%"></td></tr>
+            <tr><td><span class="rl"><span class="rd" style="opacity:.35"></span><span style="opacity:.45">último tramo (gen.)</span></span></td><td><input class="ni" type="number" name="cUtGenD" min="0" max="255" value="%C_UTGEN_D%"></td><td><input class="ni" type="number" name="cUtGenH" min="0" max="255" value="%C_UTGEN_H%"></td></tr>
             <tr><td><span class="rl"><span class="rd"></span>aburrido</span></td><td><input class="ni" type="number" name="cAbD" min="0" max="255" value="%C_AB_D%"></td><td><input class="ni" type="number" name="cAbH" min="0" max="255" value="%C_AB_H%"></td></tr>
             <tr><td><span class="rl"><span class="rd"></span>tranquilo</span></td><td><input class="ni" type="number" name="cTrD" min="0" max="255" value="%C_TR_D%"></td><td><input class="ni" type="number" name="cTrH" min="0" max="255" value="%C_TR_H%"></td></tr>
           </tbody>
@@ -507,10 +531,14 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <p class="sec-lbl" style="color:#4caf50;padding-top:0">SP2 — Ambiente (pistas 1–17)</p>
         <p style="font-size:.72rem;color:var(--muted);margin-bottom:10px;line-height:1.5">
           Ambiente genérico suena la mayor parte del partido.<br>
-          Hinchada suena <b style="color:var(--text)">1 sola vez</b> por partido (tras el 1er gol).<br>
+          Hinchada suena <b style="color:var(--text)">1 sola vez</b> por partido (tras el gol #<b id="hg" style="color:var(--text)">%HINCH_GOL%</b>).<br>
           Caliente suena <b style="color:var(--text)">máx. 2 veces</b>, solo si el partido está caliente.<br>
           Reacción gol suena instantáneo en cada gol.
         </p>
+        <div class="field">
+          <label>Hinchada después del gol # <b id="hgb">%HINCH_GOL%</b></label>
+          <input type="range" name="hincGol" min="1" max="10" value="%HINCH_GOL%" oninput="sl(this,'hgb');document.getElementById('hg').textContent=this.value">
+        </div>
         <table class="rt">
           <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
           <tbody>
@@ -529,7 +557,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
   <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
 </div>
 </form>
-<button id="fab-save" onclick="document.getElementById('cfg').submit()">💾 GUARDAR</button>
+<button id="fab-save" onclick="document.getElementById('cfg').requestSubmit()">💾 GUARDAR</button>
 
 <div class="grid" style="margin-top:14px">
   <div class="card cw" id="wifi-card">
@@ -701,6 +729,7 @@ static String buildPage() {
     html.replace("%INTERV_STATS%",   String(config.intervaloStats));
     html.replace("%GOLEADA_DIFF%",String(config.goleadaDiff));
     html.replace("%CALIENTE_GOL%",String(config.calienteGoles));
+    html.replace("%HINCH_GOL%",    String(config.hinchadaGol));
     html.replace("%PRIM_MINS_SEGS%", String(config.primerosMinsSegs));
     html.replace("%ULTI_TRAMO%",     String(config.ultimoTramoSegs));
 
@@ -718,8 +747,16 @@ static String buildPage() {
     html.replace("%C_GO_H%", String(config.comentGoleada.hasta));
     html.replace("%C_DE_D%", String(config.comentDefinido.desde));
     html.replace("%C_DE_H%", String(config.comentDefinido.hasta));
-    html.replace("%C_UT_D%", String(config.comentUltimoTramo.desde));
-    html.replace("%C_UT_H%", String(config.comentUltimoTramo.hasta));
+    html.replace("%C_UTEMP_D%", String(config.comentUltimoTramoEmpateGoles.desde));
+    html.replace("%C_UTEMP_H%", String(config.comentUltimoTramoEmpateGoles.hasta));
+    html.replace("%C_UTGOL_D%", String(config.comentUltimoTramoGoleada.desde));
+    html.replace("%C_UTGOL_H%", String(config.comentUltimoTramoGoleada.hasta));
+    html.replace("%C_UTAJ_D%",  String(config.comentUltimoTramoAjustado.desde));
+    html.replace("%C_UTAJ_H%",  String(config.comentUltimoTramoAjustado.hasta));
+    html.replace("%C_UTAB_D%",  String(config.comentUltimoTramoAburrido.desde));
+    html.replace("%C_UTAB_H%",  String(config.comentUltimoTramoAburrido.hasta));
+    html.replace("%C_UTGEN_D%", String(config.comentUltimoTramoGeneral.desde));
+    html.replace("%C_UTGEN_H%", String(config.comentUltimoTramoGeneral.hasta));
     html.replace("%C_AB_D%", String(config.comentAburrido.desde));
     html.replace("%C_AB_H%", String(config.comentAburrido.hasta));
     html.replace("%C_TR_D%", String(config.comentTranquilo.desde));
@@ -785,6 +822,7 @@ static void handleSave() {
     if (server.hasArg("intervaloStats"))          config.intervaloStats          = constrain(server.arg("intervaloStats").toInt(), 3, 30);
     if (server.hasArg("goleadaDiff"))          config.goleadaDiff          = server.arg("goleadaDiff").toInt();
     if (server.hasArg("calienteGoles"))        config.calienteGoles        = server.arg("calienteGoles").toInt();
+    if (server.hasArg("hincGol"))              config.hinchadaGol          = constrain(server.arg("hincGol").toInt(), 1, 10);
 
     if (server.hasArg("primerosMinsSegs"))     config.primerosMinsSegs     = constrain(server.arg("primerosMinsSegs").toInt(), 10, 30);
     if (server.hasArg("ultimoTramoSegs"))      config.ultimoTramoSegs      = server.arg("ultimoTramoSegs").toInt();
@@ -802,8 +840,16 @@ static void handleSave() {
     if (server.hasArg("cGoH")) config.comentGoleada.hasta         = server.arg("cGoH").toInt();
     if (server.hasArg("cDeD")) config.comentDefinido.desde        = server.arg("cDeD").toInt();
     if (server.hasArg("cDeH")) config.comentDefinido.hasta        = server.arg("cDeH").toInt();
-    if (server.hasArg("cUtD")) config.comentUltimoTramo.desde     = server.arg("cUtD").toInt();
-    if (server.hasArg("cUtH")) config.comentUltimoTramo.hasta     = server.arg("cUtH").toInt();
+    if (server.hasArg("cUtEmpD")) config.comentUltimoTramoEmpateGoles.desde = server.arg("cUtEmpD").toInt();
+    if (server.hasArg("cUtEmpH")) config.comentUltimoTramoEmpateGoles.hasta = server.arg("cUtEmpH").toInt();
+    if (server.hasArg("cUtGolD")) config.comentUltimoTramoGoleada.desde     = server.arg("cUtGolD").toInt();
+    if (server.hasArg("cUtGolH")) config.comentUltimoTramoGoleada.hasta     = server.arg("cUtGolH").toInt();
+    if (server.hasArg("cUtAjD"))  config.comentUltimoTramoAjustado.desde    = server.arg("cUtAjD").toInt();
+    if (server.hasArg("cUtAjH"))  config.comentUltimoTramoAjustado.hasta    = server.arg("cUtAjH").toInt();
+    if (server.hasArg("cUtAbD"))  config.comentUltimoTramoAburrido.desde    = server.arg("cUtAbD").toInt();
+    if (server.hasArg("cUtAbH"))  config.comentUltimoTramoAburrido.hasta    = server.arg("cUtAbH").toInt();
+    if (server.hasArg("cUtGenD")) config.comentUltimoTramoGeneral.desde     = server.arg("cUtGenD").toInt();
+    if (server.hasArg("cUtGenH")) config.comentUltimoTramoGeneral.hasta     = server.arg("cUtGenH").toInt();
     if (server.hasArg("cAbD")) config.comentAburrido.desde        = server.arg("cAbD").toInt();
     if (server.hasArg("cAbH")) config.comentAburrido.hasta        = server.arg("cAbH").toInt();
     if (server.hasArg("cTrD")) config.comentTranquilo.desde       = server.arg("cTrD").toInt();
@@ -889,6 +935,7 @@ static void handleStart() {
         if (_partido->pausado) {
             _partido->activo  = true;
             _partido->pausado = false;
+            resetearDeteccionGoles();
             Serial.println("\n[JUEGO] Partido reanudado (web)");
         } else {
             vozPitidoInicio();
@@ -897,6 +944,7 @@ static void handleStart() {
             _partido->resetear();
             _partido->activo    = true;
             _partido->terminado = false;
+            resetearDeteccionGoles();
             Serial.println("\n[JUEGO] ¡Partido iniciado!");
         }
     } else {
@@ -908,6 +956,7 @@ static void handleStart() {
 static void handleStop() {
     if (_partido) {
         _partido->activo    = false;
+        _partido->pausado   = false;
         _partido->terminado = true;
         Serial.println("\n[JUEGO] Partido detenido manualmente.");
     }
@@ -929,7 +978,7 @@ static void handleConfigBrumeGet() {
           "\"caliente\":{\"desde\":%d,\"hasta\":%d},"
           "\"goleada\":{\"desde\":%d,\"hasta\":%d},"
           "\"definido\":{\"desde\":%d,\"hasta\":%d},"
-          "\"ultimo_tramo\":{\"desde\":%d,\"hasta\":%d},"
+          "\"ultimo_tramo\":{\"empate_goles\":{\"desde\":%d,\"hasta\":%d},\"goleada\":{\"desde\":%d,\"hasta\":%d},\"ajustado\":{\"desde\":%d,\"hasta\":%d},\"aburrido\":{\"desde\":%d,\"hasta\":%d}},"
           "\"aburrido\":{\"desde\":%d,\"hasta\":%d},"
           "\"tranquilo\":{\"desde\":%d,\"hasta\":%d}},"
         "\"goles\":{"
@@ -948,9 +997,12 @@ static void handleConfigBrumeGet() {
         config.comentParejo.desde,        config.comentParejo.hasta,
         config.comentCaliente.desde,      config.comentCaliente.hasta,
         config.comentGoleada.desde,       config.comentGoleada.hasta,
-        config.comentDefinido.desde,      config.comentDefinido.hasta,
-        config.comentUltimoTramo.desde,   config.comentUltimoTramo.hasta,
-        config.comentAburrido.desde,      config.comentAburrido.hasta,
+        config.comentDefinido.desde,               config.comentDefinido.hasta,
+        config.comentUltimoTramoEmpateGoles.desde, config.comentUltimoTramoEmpateGoles.hasta,
+        config.comentUltimoTramoGoleada.desde,     config.comentUltimoTramoGoleada.hasta,
+        config.comentUltimoTramoAjustado.desde,    config.comentUltimoTramoAjustado.hasta,
+        config.comentUltimoTramoAburrido.desde,    config.comentUltimoTramoAburrido.hasta,
+        config.comentAburrido.desde,               config.comentAburrido.hasta,
         config.comentTranquilo.desde,     config.comentTranquilo.hasta,
         config.golNormal.desde,           config.golNormal.hasta,
         config.golEfusivo.desde,          config.golEfusivo.hasta,

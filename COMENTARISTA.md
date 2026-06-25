@@ -79,6 +79,18 @@ Tensión máxima. Tiene prioridad sobre el marcador: aunque haya goleada o parti
 
 Default: últimos 60s (tiempo) / match point (goles).
 
+#### Subcategorías (selección automática según marcador)
+
+| Subcategoría | Condición | Pistas |
+|---|---|---|
+| `empate_goles` | Empate con al menos 1 gol (ej. 1-1, 2-2) | 89–94 |
+| `goleada` | Diferencia ≥ `goleadaDiff` (default 3) | 95–100 |
+| `ajustado` | Diferencia de 1 ó 2 goles | 101–106 |
+| `aburrido` | 0-0 (sin goles) | 107–111 |
+| `general` *(inactivo)* | — (reservado, pistas 37–42) | — |
+
+La función `rangoUltimoTramoActual()` en Comentarista.cpp aplica esta lógica en orden: goleada → empate c/goles → aburrido (0-0) → ajustado.
+
 ---
 
 ### 3. GOLEADA
@@ -196,3 +208,13 @@ Si SP2 queda en silencio por error (`0x40` DFPlayer), en el próximo ciclo de `a
 ## Rangos de pistas configurables (web)
 
 Todos los rangos `desde/hasta` son configurables desde el panel web. Los defaults corresponden a la distribución de tracks documentada en README.md. Si se reorganizan las SDs, actualizar los rangos desde la web y guardar.
+
+---
+
+## SD Card SP1 — convención de tracks
+
+**Track N = archivo 000N.mp3** (1-indexado, orden FAT = orden en que se copiaron).
+
+Con la SD formateada correctamente y los 111 archivos copiados en orden numérico, el DFPlayer usa `cmd(0x03, N)` para reproducir exactamente el archivo `000N.mp3`. En `reproducir()` se llama `vozPlayTrack(item + hwOffset)`. Desde 2025-06, `hwOffset = 0` para todos los comentarios (INICIO, estados de partido, ULTIMO_TRAMO). Los goles/finales/pitidos también usan hwOffset=0 y no pasan por `reproducir()`.
+
+> **Historial:** La SD original tenía el archivo 0087 copiado en posición FAT 3 (offset +1 para tracks 3+) y faltaba 0054 (offset -1 para tracks 54+). Los dos bugs se cancelaban accidentalmente para tracks 55+, haciendo necesario hwOffset=1 como compensación. Con la SD re-formateada y los 111 archivos en orden correcto (incluyendo 0054), hwOffset=1 producía desfasaje de +1. Se corrigió a hwOffset=0.

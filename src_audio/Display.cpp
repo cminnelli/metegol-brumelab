@@ -27,9 +27,9 @@ void displayInit() {
     for (uint8_t i = 15; i > config.brillo; i--) { disp.setIntensity(i); delay(18); }
     disp.setIntensity(config.brillo);
 
-    disp.displayScroll("Hola Brumelab!", PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+    disp.displayScroll("METEGOL!", PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
     _enScroll = true;
-    Serial.println("[DISP] scroll Hola Brumelab! iniciado"); Serial.flush();
+    Serial.println("[DISP] scroll METEGOL! iniciado"); Serial.flush();
 }
 
 void displayTick() {
@@ -54,9 +54,8 @@ void displayMarcador(uint8_t local, uint8_t visitante) {
 }
 
 void displayGol() {
-    disp.displayScroll("Gollll!!!", PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+    disp.displayScroll("   Gollll!!!", PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
     _enScroll = true;
-    Serial.println("[DISP] Gollll!!!");
 }
 
 void displayGanador(int8_t w) {

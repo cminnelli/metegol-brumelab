@@ -25,6 +25,7 @@ static uint8_t  _pistaActual   = 0;     // 0 = sin pista activa
 static bool     _enCaliente    = false; // sesión caliente activa
 static uint8_t  _calienteCount = 0;     // sesiones caliente por partido (máx 2)
 static bool     _hinchadaFired = false; // hinchada ya sonó en este partido
+static uint8_t  _golesPartido  = 0;    // goles totales del partido (para trigger hinchada)
 
 // Transición suave: fade-out al cambiar pista
 static uint8_t  _pendingVol    = 0;
@@ -81,12 +82,17 @@ void ambienteSetVolumen(uint8_t vol) {
 }
 
 void ambienteReiniciar() {
-    cmd(0x0E, 0x00, 0x00);             // pausa SP2 — silencia antes de PARADO
+    Serial.printf("\n──── SP2  REINICIAR  [%s  p:%d]\n", ambienteGetEstado(), _pistaActual);
+    if (_pendingVol > 0) {
+        cmd(0x06, 0x00, config.volumenAmbiente);  // restaura volumen antes de parar
+    }
+    cmd(0x0E, 0x00, 0x00);             // pausa SP2
     _modo          = AmbModo::PARADO;
     _modoAnteGol   = AmbModo::PARADO;
     _pistaActual   = 0;
     _pendingVol    = 0;
     _hinchadaFired = false;
+    _golesPartido  = 0;
     _enCaliente    = false;
     _calienteCount = 0;
 }
@@ -107,7 +113,12 @@ void ambientePoll() {
             uint8_t tipo = buf[3], val = buf[6];
             switch (tipo) {
                 case 0x3F:
-                    Serial.println("\n[SPK2:AMB] SD online ✓");
+                    Serial.printf("\n[ELEC] SP2: reset  [modo:%s  p:%d]\n", ambienteGetEstado(), _pistaActual);
+                    cmd(0x06, 0x00, config.volumenAmbiente);  // restaura volumen tras reset
+                    if (_modo == AmbModo::GOL_REACCION || _modo == AmbModo::HINCHADA) {
+                        _modo        = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
+                        _pistaActual = 0;
+                    }
                     break;
                 case 0x3D: {
                     if (_modo == AmbModo::PARADO) break;
@@ -119,7 +130,7 @@ void ambientePoll() {
                             Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
                             Serial.printf("     gol_reaccion fin  |  %lus  →  hinchada (retoma)\n", (unsigned long)durS);
                             tocarUnaVez(config.hinchadaMusica, "hinchada (retoma)");
-                        } else if (!_hinchadaFired) {
+                        } else if (!_hinchadaFired && _golesPartido >= config.hinchadaGol) {
                             _hinchadaFired = true;
                             _modo = AmbModo::HINCHADA;
                             Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
@@ -145,9 +156,8 @@ void ambientePoll() {
                     break;
                 }
                 case 0x40:
-                    Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
-                    Serial.printf("     ✗ Error 0x%02X  pista:%d\n", val, _pistaActual);
-                    _pistaActual = 0;   // watchdog lo reiniciará
+                    Serial.printf("\n[ELEC] SP2: error 0x%02X  [modo:%s  p:%d]\n", val, ambienteGetEstado(), _pistaActual);
+                    _pistaActual = 0;
                     break;
                 default: break;
             }
@@ -158,7 +168,27 @@ void ambientePoll() {
 
 void ambienteActualizar(bool activo, bool esCaliente) {
     if (!activo) return;   // deja que SP2 siga; ambienteReiniciar() lo para
-    if (_modo == AmbModo::GOL_REACCION || _modo == AmbModo::HINCHADA) return;
+
+    // Timeout de seguridad: si SP2 lleva más de 15s en gol_reaccion sin recibir 0x3D, forzar salida
+    if (_modo == AmbModo::GOL_REACCION) {
+        if (millis() - _trackStartAt > 15000UL) {
+            Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+            Serial.printf("     gol_reaccion timeout → forzando salida\n");
+            if (!_hinchadaFired && _golesPartido >= config.hinchadaGol) {
+                _hinchadaFired = true;
+                _modo = AmbModo::HINCHADA;
+                tocarUnaVez(config.hinchadaMusica, "hinchada (once)");
+            } else {
+                _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
+                const RangoAudio& r = _enCaliente ? config.momentoCaliente : config.ambienteGenerico;
+                const char*     lbl = _enCaliente ? "caliente (wd)" : "ambiente (wd)";
+                tocarConTransicion(r, lbl, true);
+            }
+        }
+        return;
+    }
+
+    if (_modo == AmbModo::HINCHADA) return;
 
     // Entrar en CALIENTE (máx 2 veces por partido, solo si el partido está caliente)
     if (esCaliente && !_enCaliente && _calienteCount < 2) {
@@ -196,11 +226,12 @@ void ambienteActualizar(bool activo, bool esCaliente) {
 
 void ambienteOnGol() {
     if (_modo == AmbModo::PARADO) return;
+    _golesPartido++;
     _modoAnteGol = _modo;
     _modo = AmbModo::GOL_REACCION;
-    _pistaActual = 0;
     if (_pendingVol > 0) { cmd(0x06, 0x00, config.volumenAmbiente); _pendingVol = 0; }
     uint8_t pista = config.ambienteGol.desde + random(config.ambienteGol.hasta - config.ambienteGol.desde + 1);
+    _pistaActual  = pista;
     _trackStartAt = millis();
     cmd(0x03, 0x00, pista);
     Serial.printf("     SPK2-AMB   gol_reaccion   pista %d\n", pista);

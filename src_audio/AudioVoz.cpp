@@ -19,6 +19,10 @@ void vozBegin() {
     Serial2.begin(9600, SERIAL_8N1, VOZ_RX, VOZ_TX);
 }
 
+void vozStop() {
+    cmd(0x0E, 0x00, 0x00);   // pause SP1
+}
+
 void vozPlay(Pista pista) {
     cmd(0x03, 0x00, (uint8_t)pista);
 }
@@ -60,8 +64,8 @@ void vozPoll() {
             uint8_t tipo = buf[3], val = buf[6];
             switch (tipo) {
                 case 0x3D: _sp1Busy = false; break;
-                case 0x3F: Serial.println("\n[SPK1:VOZ] SD online ✓"); break;
-                case 0x40: if (val != 0x03) Serial.printf("\n[SPK1:VOZ] ✗ Error 0x%02X\n", val); break;
+                case 0x3F: _sp1Busy = false; Serial.println("\n[ELEC] SP1: reset"); cmd(0x06, 0x00, config.volumenVoz); break;
+                case 0x40: _sp1Busy = false; Serial.printf("\n[ELEC] SP1: error 0x%02X\n", val); break;
                 default: break;
             }
             idx = 0;

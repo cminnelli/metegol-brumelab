@@ -29,7 +29,6 @@ static const RangoAudio& rangoDeEstado(EstadoPartido e) {
     switch (e) {
         case EstadoPartido::INICIO:           return config.comentInicio;
         case EstadoPartido::PRIMEROS_MINUTOS: return config.comentPrimerosMins;
-        case EstadoPartido::ULTIMO_TRAMO:     return config.comentUltimoTramo;
         case EstadoPartido::GOLEADA:          return config.comentGoleada;
         case EstadoPartido::CALIENTE:         return config.comentCaliente;
         case EstadoPartido::PAREJO:           return config.comentParejo;
@@ -37,6 +36,15 @@ static const RangoAudio& rangoDeEstado(EstadoPartido e) {
         case EstadoPartido::ABURRIDO:         return config.comentAburrido;
         default:                              return config.comentTranquilo;
     }
+}
+
+static const RangoAudio& rangoUltimoTramoActual(const Partido& p) {
+    uint8_t diff  = (uint8_t)abs((int)p.goles[0] - (int)p.goles[1]);
+    uint8_t total = p.goles[0] + p.goles[1];
+    if (diff >= config.goleadaDiff)   return config.comentUltimoTramoGoleada;
+    if (diff == 0 && total > 0)       return config.comentUltimoTramoEmpateGoles;
+    if (diff == 0)                    return config.comentUltimoTramoAburrido;
+    return config.comentUltimoTramoAjustado;
 }
 
 // ── Determinación del estado ──────────────────────────────────────────────────
@@ -129,17 +137,139 @@ static TipoGol seleccionarTipoGol(const Partido& p) {
     return {config.golNormal, "normal"};
 }
 
+// ── Frases por pista (para diagnóstico en Serial) ─────────────────────────────
+
+static const char* const kFrases[112] = {
+    nullptr,                                                                             // 0
+    "¡Arranca el partido, señoras y señores!",                                           // 001 INICIO
+    "¡Que ruede la pelota, señoras y señores!",                                          // 002
+    "¡Ya arrancó el partido, que viva el fútbol!",                                       // 003
+    "¡Ya se juega este duelo que promete emociones!",                                    // 004
+    "¡Empieza la historia, veremos quién la escribe mejor!",                             // 005
+    "¡Empieza la batalla en este gran partido!",                                         // 006
+    "Se siguen estudiando en los primeros minutos.",                                     // 007 PRIMEROS_MINUTOS
+    "Esto recién empieza, pero ya se vive clima de partido!",                            // 008
+    "Nadie regala nada, esto recién arranca!",                                           // 009
+    "Todavía nadie muestra las cartas!...",                                              // 010
+    "Está claro que nadie quiere cometer el primer error.",                              // 011
+    "Mucha cautela en los primeros minutos.",                                            // 012
+    "Nadie regala absolutamente nada.",                                                  // 013 PAREJO
+    "Esto está para cualquiera!",                                                        // 014
+    "Partido chivo, durísimo.",                                                          // 015
+    "No se sacan diferencias.",                                                          // 016
+    "Un error puede cambiar toda la historia.",                                          // 017
+    "Está más cerrado que banco un feriado.",                                            // 018
+    "¡Mamita querida como está este partido!",                                           // 019 CALIENTE
+    "¡Este partido va a quedar en la historia!",                                         // 020
+    "¡No se regalan absolutamente nada!",                                                // 021
+    "¡El partido está al rojo vivo!",                                                    // 022
+    "¡Esto es una locura hermosa!",                                                      // 023
+    "¡Partidazo con todas las letras!",                                                  // 024
+    "Los están pasando por arriba.",                                                     // 025 GOLEADA
+    "Hay uno que juega y otro que no ve la hora que termine.",                           // 026
+    "La diferencia empieza a ser demasiado grande.",                                     // 027
+    "La remontada ya parece imposible!",                                                 // 028
+    "Está sacando chapa de candidato.",                                                  // 029
+    "Pinta para goleada de las que duelen.",                                             // 030
+    "Salvo un milagro, empieza a cerrarse la historia.",                                 // 031 DEFINIDO
+    "La victoria está cada vez más cerca.",                                              // 032
+    "Ya se empieza a bajar la persiana.",                                                // 033
+    "Están controlando el partido con autoridad.",                                       // 034
+    "Claramente este partido ya tiene dueño.",                                           // 035
+    "Hace falta un milagro para cambiar esto!",                                          // 036
+    "¡Entramos en zona de definición!",                                                  // 037 ULTIMO_TRAMO (inactivo)
+    "¡Se vienen los segundos más calientes!",                                            // 038
+    "¡Ahora sí, se juega el todo por el todo!",                                         // 039
+    "¡No queda prácticamente nada!",                                                     // 040
+    "¡Se viene un cierre para el infarto!",                                              // 041
+    "¡Estamos en la recta final del partido!",                                           // 042
+    "Mucha lucha, poco fútbol.",                                                         // 043 ABURRIDO
+    "Parece que arqueros están de espectadores.",                                        // 044
+    "Le está faltando pimienta al partido.",                                             // 045
+    "Mucho estudio, pocas emociones.",                                                   // 046
+    "Che, me parece que los dos cuidan más de lo que arriesgan.",                        // 047
+    "Este partido más trabado que trámite en la municipalidad.",                         // 048
+    "Pocas situaciones claras por ahora.",                                               // 049 TRANQUILO
+    "Momento de calma en el partido.",                                                   // 050
+    "Bajó un cambio el encuentro.",                                                      // 051
+    "Los dos intentan acomodarse.",                                                      // 052
+    "Circula la pelota, pero sin profundidad.",                                          // 053
+    "Partido controlado por ahora.",                                                     // 054
+    "¡Gol! ¡Gol! ¡Gol!",                                                               // 055 GOL_NORMAL
+    "¡Gol! ¡La mandó a guardar!",                                                        // 056
+    "¡Gol! ¡No perdonó!",                                                               // 057
+    "¡Gol y a sacar del medio!",                                                         // 058
+    "¡GOOOOOOOOOOOL! ¡Qué locura!",                                                     // 059 GOL_EFUSIVO
+    "¡GOOOOOOOOOOOL! ¡Tremendo golazo!",                                                 // 060
+    "¡GOOOOOOOOOOOL! ¡Se viene abajo el estadio!",                                       // 061
+    "¡GOOOOOOOOOOOL! ¡Pero qué golazo, por favor!",                                     // 062
+    "¡Golazo! ¡Empate! ¡Empate señores!",                                               // 063 GOL_EMPATE
+    "¡Gooooooool! ¡Y lo empata cuando parecía imposible!",                              // 064
+    "¡Golazo! ¡Vuelve todo a emparejarse!",                                             // 065
+    "¡Gooooooool! ¡Empieza otro partido!",                                              // 066
+    "¡GOOOOOOL! ¡No terminaron de festejar uno y llegó el otro!",                       // 067 GOL_CALIENTE
+    "¡GOOOOOOL! ¡Que pedazo de golazo por dios!",                                       // 068
+    "¡GOOOOOOL! ¡Esto no da respiro!",                                                  // 069
+    "¡GOOOOOOL! ¡Partido recontra caliente!",                                           // 070
+    "¡GOOOOOOL! ¡SOBRE LA HORA!",                                                       // 071 GOL_AGONICO
+    "¡GOOOOOOL! ¡Cuando el partido parecía que se moría!",                              // 072
+    "¡GOOOOOOL! ¡Gol agónico, señoras y señores!",                                      // 073
+    "¡GOOOOOOL! ¡EMPATE AGÓNICO! ¡NO LO PUEDO CREER!",                                 // 074 GOL_AGONICO_EMPATE
+    "¡GOOOOOOL! ¡Lo empató en una de las últimas del partido!",                         // 075
+    "¡GOOOOOOL! ¡Rescató un empate imposible!",                                         // 076
+    "Silbato inicio",                                                                    // 077 PITIDO_INICIO
+    "Silbato inicio",                                                                    // 078
+    "Silbato final",                                                                     // 079 PITIDO_FINAL
+    "Silbato final",                                                                     // 080
+    "Partido tan parejo que cualquier resultado hubiese parecido injusto.",              // 081 FINAL_EMPATE
+    "Más equilibrado que balanza de farmacia.",                                          // 082
+    "Lo dominó de punta a punta.",                                                       // 083 FINAL_APLASTANTE
+    "La de un baile bárbaro.",                                                           // 084
+    "Lo ganó porque alguien tenía que ganarlo.",                                         // 085 FINAL_AJUSTADA
+    "Se definió por un detalle.",                                                        // 086
+    "Sin hacer ruido, hizo el trabajo y se llevó el premio.",                            // 087 FINAL_NORMAL
+    "Sin lujos ni milagros. Hizo los deberes y se quedó con los puntos.",                // 088
+    "¡Entramos en zona de definición y esto sigue palo a palo!",                        // 089 UT_EMPATE_GOLES
+    "¡Se vienen los segundos más calientes de un partido lleno de goles!",              // 090
+    "¡Ahora sí, cualquiera de los dos lo puede ganar!",                                 // 091
+    "¡No queda prácticamente nada y siguen sin sacarse diferencias!",                   // 092
+    "¡Se viene un cierre para el infarto en un partido completamente abierto!",         // 093
+    "¡Estamos en la recta final y la mete gana!",                                       // 094
+    "¡Entramos en zona de definición y la remontada parece imposible!",                 // 095 UT_GOLEADA
+    "¡Se vienen los últimos segundos y buscan liquidarlo por completo!",                // 096
+    "¡Ahora sí, estamos cerca del final y hay un claro dominador!",                     // 097
+    "¡No queda prácticamente nada y la ventaja sigue siendo muy amplia!",               // 098
+    "¡Se viene el cierre de un partido que tiene un claro ganador!",                    // 099
+    "¡Se acerca el cierre del partido y todo indica que la historia ya está escrita!",  // 100
+    "¡Entramos en zona de definición y esto sigue todo o nada!",                        // 101 UT_AJUSTADO
+    "¡Se vienen los segundos más calientes de todo el partido!",                        // 102
+    "¡Ahora sí, se juegan todo para empatarlo!",                                        // 103
+    "¡No queda prácticamente nada y la diferencia sigue siendo mínima!",                // 104
+    "¡Se viene un cierre para el infarto y un gol lo cambia todo!",                     // 105
+    "¡Estamos en la recta final y un solo gol puede cambiarlo todo!",                   // 106
+    "¡Entramos en zona de definición buscando una emoción que todavía no aparece!",     // 107 UT_ABURRIDO
+    "¡Se vienen los últimos segundos y cualquiera que se despierte puede ganar!",       // 108
+    "¡Recta final del partido ahora sí, no queda margen para el error!",                // 109
+    "¡Se viene el último tramo de un partido más cerrado que negocio en feriado!",      // 110
+    "¡Estamos en la recta final y una jugada puede cambiarlo todo!",                    // 111
+};
+
+static const char* fraseDePista(uint8_t pista) {
+    if (pista == 0 || pista > 111) return nullptr;
+    return kFrases[pista];
+}
+
 // ── Shuffle sin reposición por rango ─────────────────────────────────────────
 
 struct RangoState { uint8_t desde; uint16_t usados; };
-static RangoState _rangoStates[16];
+static RangoState _rangoStates[24];
 static uint8_t    _nRangoStates = 0;
 
 static uint16_t* getUsados(const RangoAudio& rango) {
     for (uint8_t i = 0; i < _nRangoStates; i++) {
         if (_rangoStates[i].desde == rango.desde) return &_rangoStates[i].usados;
     }
-    if (_nRangoStates < 16) {
+    if (_nRangoStates < 24) {
         _rangoStates[_nRangoStates] = {rango.desde, 0};
         return &_rangoStates[_nRangoStates++].usados;
     }
@@ -157,9 +287,12 @@ static uint8_t  _golesFinales[2]   = {0, 0};
 // asBlock=true  → bloque separador (comentarios, final)
 // asBlock=false → línea hija sin separador (dentro del bloque GOL)
 static void reproducir(const char* prefix, const char* label,
-                       const RangoAudio& rango, int8_t hwOffset = 1, bool asBlock = true) {
-    if (rango.desde == 0 && rango.hasta == 0) return;
-    if (rango.desde > rango.hasta)             return;
+                       const RangoAudio& rango, int8_t hwOffset = 0, bool asBlock = true) {
+    if (rango.desde == 0) {
+        Serial.printf("\n[WARN] SPK1: rango '%s' desde=0 — configurá desde≥1 en la web\n", label);
+        return;
+    }
+    if (rango.desde > rango.hasta) return;
 
     uint8_t   size     = rango.hasta - rango.desde + 1;
     uint16_t* usados   = getUsados(rango);
@@ -176,23 +309,40 @@ static void reproducir(const char* prefix, const char* label,
     }
     if (count == 0) return;
 
-    uint8_t idx  = avail[random(0, count)];
-    uint8_t item = rango.desde + idx;
+    uint8_t idx   = avail[random(0, count)];
+    uint8_t item  = rango.desde + idx;
+    uint8_t pista = (uint8_t)(item + hwOffset);
     if (usados) *usados |= (1u << idx);
 
+    const char* frase = fraseDePista(item);
     if (asBlock) {
         Serial.printf("\n──── SPK1 - COMENTARIO  ─────────────────────\n");
         Serial.printf("     %-14s [%d-%d]  →  pista %d\n", label, rango.desde, rango.hasta, item);
+        if (frase) Serial.printf("     %04d  %s\n", item, frase);
     } else {
         Serial.printf("     SPK1-VOZ   %-12s [%d-%d]  →  pista %d\n", label, rango.desde, rango.hasta, item);
+        if (frase) Serial.printf("     %04d  %s\n", item, frase);
     }
-    vozPlayTrack((uint8_t)(item + hwOffset));
+    vozPlayTrack(pista);
 }
 
 static void dispararComentario(const Partido& partido) {
-    EstadoPartido     estado = determinarEstado(partido);
-    const RangoAudio& rango  = rangoDeEstado(estado);
-    reproducir("COMENTARIO", nombreEstado(estado), rango, 1);
+    EstadoPartido      estado = determinarEstado(partido);
+    const RangoAudio*  rango;
+    const char*        label = nombreEstado(estado);
+
+    if (estado == EstadoPartido::ULTIMO_TRAMO) {
+        rango = &rangoUltimoTramoActual(partido);
+        uint8_t diff  = (uint8_t)abs((int)partido.goles[0] - (int)partido.goles[1]);
+        uint8_t total = partido.goles[0] + partido.goles[1];
+        label = (diff >= config.goleadaDiff)  ? "ut:goleada"
+              : (diff == 0 && total > 0)      ? "ut:empate_goles"
+              : (diff == 0)                   ? "ut:aburrido"
+                                              : "ut:ajustado";
+    } else {
+        rango = &rangoDeEstado(estado);
+    }
+    reproducir("COMENTARIO", label, *rango, 0);
 }
 
 static void programarProximo() {
@@ -244,7 +394,7 @@ void comentaristaLoop(const Partido& partido) {
         if (vozIsBusy()) { _proximoComentario = millis() + 2000UL; return; }
         _inicioPendiente = false;
         _inicioFiredAt   = millis();
-        reproducir("COMENTARIO", "inicio", config.comentInicio, 1);
+        reproducir("COMENTARIO", "inicio", config.comentInicio, 0);
         programarProximo();
         return;
     }
@@ -262,6 +412,7 @@ void comentaristaReiniciar() {
     _inicioPendiente = false;
     _inicioFiredAt   = 0;
     _finPendienteEn  = 0;
+    _nRangoStates    = 0;   // limpia historial de shuffle entre partidos
 }
 
 void comentaristaFinalPartido(const Partido& partido) {
@@ -296,17 +447,16 @@ void comentaristaStats(const Partido& partido) {
     const char* modo  = config.modoJuego == 0 ? "GOLES" : "TIEMPO";
     const char* est   = nombreEstado(e);
 
-    // Indicador visual del estado
-    const char* icono = "";
-    if      (strcmp(est, "caliente")     == 0) icono = " ♨";
-    else if (strcmp(est, "goleada")      == 0) icono = " !!";
-    else if (strcmp(est, "ultimo_tramo") == 0) icono = " !!";
-    else if (strcmp(est, "aburrido")     == 0) icono = " zz";
+    const char* sub = "";
+    if (e == EstadoPartido::ULTIMO_TRAMO) {
+        sub = (diff >= config.goleadaDiff)   ? ":goleada"
+            : (diff == 0 && total > 0)       ? ":empate_goles"
+            : (diff == 0)                    ? ":aburrido"
+                                             : ":ajustado";
+    }
 
-    Serial.printf("\n──── %02lu:%02lu  [STATS]  ───────────────────────\n",
-        (unsigned long)mm, (unsigned long)ss);
-    Serial.printf("     %d  ─  %d   |  %s%s  [%s]\n",
-        partido.goles[0], partido.goles[1], est, icono, modo);
-    Serial.printf("     goles:%d  diff:%d  |  SP2: %s p:%d\n",
-        total, diff, ambienteGetEstado(), ambienteGetPista());
+    Serial.printf("\n──── %02lu:%02lu  [STATS: %s%s]  [%s]\n",
+        (unsigned long)mm, (unsigned long)ss, est, sub, modo);
+    Serial.printf("     %d  ─  %d   |  goles:%d  diff:%d  |  SP2: %s p:%d\n",
+        partido.goles[0], partido.goles[1], total, diff, ambienteGetEstado(), ambienteGetPista());
 }

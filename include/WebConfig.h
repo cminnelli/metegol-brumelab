@@ -29,6 +29,7 @@ struct Config {
     uint16_t intervaloStats;          // default 4
     uint8_t  goleadaDiff;             // diff mínimo para goleada (default 3)
     uint8_t  calienteGoles;           // total goles para "caliente" (default 4)
+    uint8_t  hinchadaGol;             // gol del partido en que suena la hinchada (default 2)
     uint16_t inicioSegs;              // seg de INICIO (default 30)
     uint16_t primerosMinsSegs;        // seg de PRIMEROS_MINUTOS (default 120)
     uint16_t ultimoTramoSegs;         // seg restantes para ultimo_tramo en modo tiempo (default 60)
@@ -40,9 +41,15 @@ struct Config {
     RangoAudio comentParejo;          // {13, 18}
     RangoAudio comentCaliente;        // {19, 24}
     RangoAudio comentGoleada;         // {25, 30}
-    RangoAudio comentDefinido;        // {31, 36}
-    RangoAudio comentUltimoTramo;     // {37, 42}
-    RangoAudio comentAburrido;        // {43, 48}
+    RangoAudio comentDefinido;               // {31, 36}
+    RangoAudio comentUltimoTramoGeneral;     // {37, 42} — inactivo (reservado)
+    RangoAudio comentAburrido;               // {43, 48}
+
+    // Último tramo — subcategorías por estado del partido (pistas 89–111)
+    RangoAudio comentUltimoTramoEmpateGoles; // {89, 94}
+    RangoAudio comentUltimoTramoGoleada;     // {95, 100}
+    RangoAudio comentUltimoTramoAjustado;    // {101, 106}
+    RangoAudio comentUltimoTramoAburrido;    // {107, 111}
     RangoAudio comentTranquilo;       // {49, 54}
 
     // Goles — selección contextual (pistas 55–76)

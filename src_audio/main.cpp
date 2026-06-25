@@ -49,10 +49,34 @@ static unsigned long _sensor1LowAt = 0;   // momento en que sensor1 bajó a LOW
 static unsigned long _sensor2LowAt = 0;
 #define SENSOR_MIN_LOW_MS 20              // duración mínima LOW para validar gol
 
+// Llamado desde WebConfig al iniciar/reanudar via web — resetea sensores igual que el encoder
+void resetearDeteccionGoles() {
+    _prevSensor1     = digitalRead(PIN_SENSOR_CELESTE);
+    _prevSensor2     = digitalRead(PIN_SENSOR_BLANCO);
+    _ultimoGol1      = millis();
+    _ultimoGol2      = millis();
+    _sensor1LowAt    = 0;
+    _sensor2LowAt    = 0;
+    _altUltimoCambio = millis();
+}
+
 
 void setup() {
     Serial.begin(115200);
     Serial.println("=== HOLA BRUMELAB! ===");
+    {
+        esp_reset_reason_t r = esp_reset_reason();
+        const char* motivo =
+            r == ESP_RST_POWERON  ? "POWER_ON"  :
+            r == ESP_RST_SW       ? "SW_RESET"  :
+            r == ESP_RST_PANIC    ? "PANIC/EXCEPCION" :
+            r == ESP_RST_INT_WDT  ? "WDT_INTERRUPCION" :
+            r == ESP_RST_TASK_WDT ? "WDT_TAREA"  :
+            r == ESP_RST_WDT      ? "WDT_OTRO"   :
+            r == ESP_RST_DEEPSLEEP? "DEEP_SLEEP" :
+            r == ESP_RST_BROWNOUT ? "BROWNOUT"   : "DESCONOCIDO";
+        Serial.printf("[RESET] Motivo: %s (%d)\n", motivo, (int)r);
+    }
     Serial.println("[1] Serial OK");
     webConfigInit(&partido);  // carga config desde NVS + inicia AP WiFi (activa RF → entropía real)
     randomSeed(esp_random() ^ (uint32_t)micros());
@@ -80,6 +104,11 @@ void setup() {
     ambienteBegin();
     vozBegin();
 
+    // Para ambos DFPlayers al arrancar (siguen con poder aunque el ESP32 haya reseteado)
+    Serial.println("[BOOT] Parando DFPlayers...");
+    vozStop();
+    ambienteReiniciar();
+
     // Boot wait compartido 2s — captura 0x3F de SP1 y SP2
     for (uint16_t i = 0; i < 200; i++) {
         vozPoll();
@@ -93,8 +122,7 @@ void setup() {
     ambienteSetVolumen(config.volumenAmbiente);
     for (uint8_t i = 0; i < 30; i++) { vozPoll(); ambientePoll(); delay(10); }
     // Inicia SP2 con pista ambiente
-    displayInit();
-    displayModo(config.modoJuego == 0 ? "1-GOLES" : "2-TIEMPO");
+    displayInit();  // scrollea "METEGOL!" — se completa en los primeros ciclos de loop()
 
     partido.resetear();
     // Descarta cualquier ruido del encoder acumulado durante el boot
