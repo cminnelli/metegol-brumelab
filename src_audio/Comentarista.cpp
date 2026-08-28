@@ -323,7 +323,10 @@ static void reproducir(const char* prefix, const char* label,
         Serial.printf("     SPK1-VOZ   %-12s [%d-%d]  →  pista %d\n", label, rango.desde, rango.hasta, item);
         if (frase) Serial.printf("     %04d  %s\n", item, frase);
     }
-    vozPlayTrack(pista);
+    // El gol (asBlock=false) pisa cualquier comentario en curso con un fade breve;
+    // el resto de los comentarios esperan su turno (vozIsBusy) antes de sonar.
+    if (asBlock) vozPlayTrack(pista);
+    else         vozPlayTrackPrioritario(pista);
 }
 
 static void dispararComentario(const Partido& partido) {

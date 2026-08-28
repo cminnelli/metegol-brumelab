@@ -36,6 +36,19 @@ void vozPlayTrack(uint8_t n) {
 
 bool vozIsBusy() { return _sp1Busy; }
 
+// El gol es lo más importante: pisa cualquier comentario en curso, pero con un
+// fade breve (baja volumen, cambia de pista, restaura) para que no suene tosco.
+void vozPlayTrackPrioritario(uint8_t n) {
+    if (_sp1Busy) {
+        cmd(0x06, 0x00, 0);              // fade breve: baja volumen antes de pisar
+        _sp1Busy = true;
+        cmd(0x03, 0x00, n);
+        cmd(0x06, 0x00, config.volumenVoz);  // restaura volumen ya sobre la pista del gol
+    } else {
+        vozPlayTrack(n);
+    }
+}
+
 void vozSetVolumen(uint8_t vol) {
     cmd(0x06, 0x00, vol);
 }

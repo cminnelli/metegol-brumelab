@@ -23,6 +23,18 @@ struct Config {
     uint8_t  velocidadScroll;   // 10-100 ms/frame
     uint8_t  intervaloDisplay;  // seg entre marcador↔tiempo en modo tiempo (default 5)
 
+    // Display — textos customizables (farola)
+    char textoBoot[20];             // al bootear el ESP32          — "METEGOL!"
+    char textoArranca[20];          // al iniciar partido            — "ARRANCAAA!"
+    char textoPausa[20];            // al pausar                     — "PAUSA!"
+    char textoReanuda[20];          // al reanudar                   — "VAMOS!"
+    char textoCancelado[20];        // al cancelar                   — "CANCELADO!"
+    char textoGol[20];              // en cada gol                   — "Gollll!!!"
+    char textoGanadorCeleste[28];   // fin de partido, ganó celeste  — "Fin! Ganador Celeste!"
+    char textoGanadorBlanco[28];    // fin de partido, ganó blanco   — "Fin! Ganador Blanco!"
+    char textoEmpate[28];           // fin de partido, empate        — "Fin! Empate!"
+    char textoPreparense[20];       // prefijo del anuncio del próximo partido de torneo — "Preparense"
+
     // Comentarista — intervalo y thresholds
     uint16_t intervaloComentariosMin; // default 10
     uint16_t intervaloComentariosMax; // default 30

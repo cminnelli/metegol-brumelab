@@ -9,3 +9,4 @@ void displayGol();
 void displayGanador(int8_t ganador);
 void displayTiempo(uint32_t ms);
 void displayModo(const char* texto);
+bool displayEnScroll();

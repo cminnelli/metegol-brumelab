@@ -5,6 +5,7 @@
 #include "WebConfig.h"
 #include "Comentarista.h"
 #include "Display.h"
+#include "Torneo.h"
 #include "config.h"
 
 #define PIN_SENSOR_CELESTE 34   // equipo celeste
@@ -19,6 +20,10 @@ volatile int  encDelta   = 0;
 volatile bool encChanged = false;
 
 void IRAM_ATTR onClk() {
+    static uint32_t lastPulse = 0;
+    uint32_t now = micros();
+    if (now - lastPulse < 5000) return;  // 5ms: descarta el 2do pulso del mismo detent (KY-040)
+    lastPulse = now;
     if (digitalRead(PIN_DT) == LOW) encDelta++;
     else                            encDelta--;
     encChanged = true;
@@ -48,6 +53,24 @@ static unsigned long _ultimoGol2   = 0;
 static unsigned long _sensor1LowAt = 0;   // momento en que sensor1 bajó a LOW
 static unsigned long _sensor2LowAt = 0;
 #define SENSOR_MIN_LOW_MS 20              // duración mínima LOW para validar gol
+
+// Fin de partido por gol: el relato del gol (SP1) y la reacción (SP2) tienen que
+// terminar de sonar antes de disparar el pitido final — ver loop()
+static bool    _finGolPendiente = false;
+static int8_t  _finGolGanador   = -1;
+
+// Fin de partido de torneo: anuncia en la farola quiénes juegan a continuación,
+// una vez que terminó de scrollear el "Fin! Ganador..." — ver loop()
+static bool    _torneoAnuncioPendiente = false;
+
+// Muestra "Preparense X y Y" con los próximos jugadores del torneo, si corresponde
+static void anunciarProximosTorneo() {
+    static char anuncio[64];   // MD_Parola guarda el puntero, no una copia — tiene que ser estático
+    char nombres[40];
+    if (!torneoProximosNombres(nombres, sizeof(nombres))) return;
+    snprintf(anuncio, sizeof(anuncio), "%s %s", config.textoPreparense, nombres);
+    displayTexto(anuncio, config.velocidadScroll);
+}
 
 // Llamado desde WebConfig al iniciar/reanudar via web — resetea sensores igual que el encoder
 void resetearDeteccionGoles() {
@@ -158,16 +181,14 @@ void loop() {
                 Serial.printf("     Celeste anota!\n");
                 ambienteOnGol();
                 displayMarcador(partido.goles[0], partido.goles[1]);
+                comentaristaOnGol(partido);
+                displayGol();
                 if (partido.terminado) {
                     int8_t w = partido.ganador();
                     Serial.printf("     → FINAL  |  %s\n",
                         w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
-                    vozPitidoFinal();
-                    comentaristaFinalPartido(partido);
-                    displayGanador(w);
-                } else {
-                    comentaristaOnGol(partido);
-                    displayGol();
+                    _finGolPendiente = true;
+                    _finGolGanador   = w;
                 }
             }
         }
@@ -180,16 +201,14 @@ void loop() {
                 Serial.printf("     Blanco anota!\n");
                 ambienteOnGol();
                 displayMarcador(partido.goles[0], partido.goles[1]);
+                comentaristaOnGol(partido);
+                displayGol();
                 if (partido.terminado) {
                     int8_t w = partido.ganador();
                     Serial.printf("     → FINAL  |  %s\n",
                         w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
-                    vozPitidoFinal();
-                    comentaristaFinalPartido(partido);
-                    displayGanador(w);
-                } else {
-                    comentaristaOnGol(partido);
-                    displayGol();
+                    _finGolPendiente = true;
+                    _finGolGanador   = w;
                 }
             }
         }
@@ -197,13 +216,32 @@ void loop() {
     _prevSensor1 = cur1;
     _prevSensor2 = cur2;
 
+    // ---- Fin de partido por gol: espera a que termine el relato del gol (SP1) y
+    //     la reacción de gol (SP2) antes de disparar el pitido final ----
+    if (_finGolPendiente && !vozIsBusy() && strcmp(ambienteGetEstado(), "gol_reaccion") != 0) {
+        _finGolPendiente = false;
+        ambienteReiniciar();
+        vozPitidoFinal();
+        comentaristaFinalPartido(partido);
+        displayGanador(_finGolGanador);
+        if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
+    }
+
+    // ---- Torneo: anuncia a los próximos jugadores una vez que terminó de
+    //     scrollear el "Fin! Ganador..." ----
+    if (_torneoAnuncioPendiente && !displayEnScroll()) {
+        _torneoAnuncioPendiente = false;
+        anunciarProximosTorneo();
+    }
+
     // ---- Comentarista: corre después de sensores, respeta _proximoComentario ----
     comentaristaLoop(partido);
 
     // ---- Display: scrollea el tiempo restante cada intervaloDisplay segundos ----
     if (partido.activo && config.modoJuego == 1) {
         uint32_t ahora = millis();
-        if (ahora - _altUltimoCambio >= (uint32_t)config.intervaloDisplay * 1000UL) {
+        if (ahora - _altUltimoCambio >= (uint32_t)config.intervaloDisplay * 1000UL
+            && !displayEnScroll()) {   // no pisar un "Gollll!!!"/"Fin!..." recién disparado
             _altUltimoCambio = ahora;
             uint32_t total    = (uint32_t)config.duracionMin * 60000UL;
             uint32_t elapsed  = ahora - partido.inicio;
@@ -266,14 +304,14 @@ void loop() {
                     _ultimoGol1 = millis(); _ultimoGol2 = millis();
                     _prevSensor1 = digitalRead(PIN_SENSOR_CELESTE);
                     _prevSensor2 = digitalRead(PIN_SENSOR_BLANCO);
-                    displayTexto("ARRANCAAA!", config.velocidadScroll);
+                    displayTexto(config.textoArranca, config.velocidadScroll);
                     displayMarcador(0, 0);
                     Serial.println("\n[ENCODER] Partido iniciado");
                 } else if (partido.activo) {
                     // Jugando → pausar
                     partido.activo  = false;
                     partido.pausado = true;
-                    displayTexto("PAUSA!", config.velocidadScroll);
+                    displayTexto(config.textoPausa, config.velocidadScroll);
                     Serial.println("\n[ENCODER] Partido pausado");
                 } else if (partido.pausado) {
                     // Pausado → reanudar
@@ -282,11 +320,12 @@ void loop() {
                     _ultimoGol1 = millis(); _ultimoGol2 = millis();
                     _prevSensor1 = digitalRead(PIN_SENSOR_CELESTE);
                     _prevSensor2 = digitalRead(PIN_SENSOR_BLANCO);
-                    displayTexto("VAMOS!", config.velocidadScroll);
+                    displayTexto(config.textoReanuda, config.velocidadScroll);
                     displayMarcador(partido.goles[0], partido.goles[1]);
                     Serial.println("\n[ENCODER] Partido reanudado");
                 } else if (partido.terminado) {
                     // Terminado → nuevo partido
+                    _finGolPendiente = false;
                     vozPitidoInicio();
                     comentaristaReiniciar();
                     ambienteReiniciar();
@@ -296,18 +335,19 @@ void loop() {
                     _ultimoGol1 = millis(); _ultimoGol2 = millis();
                     _prevSensor1 = digitalRead(PIN_SENSOR_CELESTE);
                     _prevSensor2 = digitalRead(PIN_SENSOR_BLANCO);
-                    displayTexto("ARRANCAAA!", config.velocidadScroll);
+                    displayTexto(config.textoArranca, config.velocidadScroll);
                     displayMarcador(0, 0);
                     Serial.println("\n[ENCODER] Nuevo partido (desde terminado)");
                 }
             } else {
                 // Doble click: cancela el partido y vuelve a espera
+                _finGolPendiente = false;
                 ambienteReiniciar();
                 comentaristaReiniciar();
                 partido.activo    = false;
                 partido.pausado   = false;
                 partido.terminado = false;
-                displayTexto("CANCELADO!", config.velocidadScroll);
+                displayTexto(config.textoCancelado, config.velocidadScroll);
                 displayMarcador(0, 0);
                 Serial.println("\n[ENCODER] Partido cancelado");
             }
@@ -322,9 +362,11 @@ void loop() {
             partido.activo    = false;
             partido.terminado = true;
             int8_t w = partido.ganador();
+            ambienteReiniciar();
             vozPitidoFinal();
             comentaristaFinalPartido(partido);
             displayGanador(w);
+            if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
             if (w == 0)      Serial.println("\n[JUEGO] ¡Ganó equipo 1! (tiempo)");
             else if (w == 1) Serial.println("\n[JUEGO] ¡Ganó equipo 2! (tiempo)");
             else             Serial.println("\n[JUEGO] ¡Empate! (tiempo)");
