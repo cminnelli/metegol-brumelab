@@ -220,7 +220,10 @@ void loop() {
     //     la reacción de gol (SP2) antes de disparar el pitido final ----
     if (_finGolPendiente && !vozIsBusy() && strcmp(ambienteGetEstado(), "gol_reaccion") != 0) {
         _finGolPendiente = false;
-        ambienteReiniciar();
+        // No se llama ambienteReiniciar() acá: el ambiente que ya está sonando
+        // (genérico o caliente) sigue de fondo durante el pitido y el comentario
+        // final, en vez de cortar a silencio. Se resetea recién al arrancar el
+        // próximo partido.
         vozPitidoFinal();
         comentaristaFinalPartido(partido);
         displayGanador(_finGolGanador);
@@ -362,7 +365,8 @@ void loop() {
             partido.activo    = false;
             partido.terminado = true;
             int8_t w = partido.ganador();
-            ambienteReiniciar();
+            // Sin ambienteReiniciar() acá: el ambiente sigue de fondo durante el
+            // pitido y el comentario final (se resetea al arrancar el próximo partido).
             vozPitidoFinal();
             comentaristaFinalPartido(partido);
             displayGanador(w);
