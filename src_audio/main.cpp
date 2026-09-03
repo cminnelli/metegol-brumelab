@@ -74,9 +74,6 @@ static bool    _torneoAnuncioPendiente = false;
 // terminó de scrollear el "Fin! Ganador..." — ver loop()
 static bool    _jugarDeNuevoPendiente = false;
 
-// Ambiente genérico random apenas termina de sonar el pitido final — ver loop()
-static bool    _ambienteFinPendiente = false;
-
 // Muestra "Preparense X y Y" con los próximos jugadores del torneo, si corresponde
 static void anunciarProximosTorneo() {
     static char anuncio[64];   // MD_Parola guarda el puntero, no una copia — tiene que ser estático
@@ -252,16 +249,8 @@ void loop() {
         vozPitidoFinal();
         comentaristaFinalPartido(partido);
         displayGanador(_finGolGanador);
-        _ambienteFinPendiente = true;
         if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
         else                                             _jugarDeNuevoPendiente = true;
-    }
-
-    // ---- Ambiente: arranca un track de ambiente genérico random apenas termina
-    //     de sonar el pitido final ----
-    if (_ambienteFinPendiente && !vozIsBusy()) {
-        _ambienteFinPendiente = false;
-        ambienteFinDePartido();
     }
 
     // ---- Torneo: anuncia a los próximos jugadores una vez que terminó de
@@ -420,7 +409,6 @@ void loop() {
             vozPitidoFinal();
             comentaristaFinalPartido(partido);
             displayGanador(w);
-            _ambienteFinPendiente = true;
             if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
             else                                             _jugarDeNuevoPendiente = true;
             if (w == 0)      Serial.println("\n[JUEGO] ¡Ganó equipo 1! (tiempo)");

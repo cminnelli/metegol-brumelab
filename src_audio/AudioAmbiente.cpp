@@ -230,15 +230,6 @@ void ambienteActualizar(bool activo, bool esCaliente) {
     }
 }
 
-// Fuerza un track random de "ambiente genérico" (pistas 1-4) — se usa para que
-// arranque ambiente apenas termina de sonar el pitido final, en vez de dejar lo
-// que hubiera estado sonando antes (caliente, hinchada) en el partido que ya terminó.
-void ambienteFinDePartido() {
-    _enCaliente = false;
-    _modo = AmbModo::NORMAL;
-    tocarConTransicion(config.ambienteGenerico, "ambiente (fin partido)", true);
-}
-
 void ambienteOnGol() {
     if (_modo == AmbModo::PARADO) return;
     _golesPartido++;
