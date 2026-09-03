@@ -74,6 +74,13 @@ static bool    _torneoAnuncioPendiente = false;
 // terminó de scrollear el "Fin! Ganador..." — ver loop()
 static bool    _jugarDeNuevoPendiente = false;
 
+// Mientras el partido queda "terminado" esperando el próximo (sin torneo), la
+// farola rota entre el resultado y el texto de "jugar de nuevo" cada
+// intervaloDisplay segundos, hasta que arranca el próximo partido — ver loop()
+static bool     _finRotando            = false;
+static bool     _finRotandoMuestraTexto = false;   // false=marcador, true=texto
+static uint32_t _finRotandoUltimoCambio = 0;
+
 // Muestra "Preparense X y Y" con los próximos jugadores del torneo, si corresponde
 static void anunciarProximosTorneo() {
     static char anuncio[64];   // MD_Parola guarda el puntero, no una copia — tiene que ser estático
@@ -261,10 +268,27 @@ void loop() {
     }
 
     // ---- Sin torneo: invita a jugar de nuevo una vez que terminó de scrollear
-    //     el "Fin! Ganador..." ----
+    //     el "Fin! Ganador...", y arranca la rotación resultado ↔ texto ----
     if (_jugarDeNuevoPendiente && !displayEnScroll()) {
         _jugarDeNuevoPendiente = false;
         displayTexto(config.textoJugarDeNuevo, config.velocidadScroll);
+        _finRotando             = true;
+        _finRotandoMuestraTexto = false;   // el próximo cambio muestra el resultado
+        _finRotandoUltimoCambio = millis();
+    }
+
+    // ---- Partido terminado (sin torneo): rota entre el resultado y "jugar de
+    //     nuevo" cada intervaloDisplay segundos, hasta que arranque el próximo ----
+    if (_finRotando) {
+        if (!partido.terminado) {
+            _finRotando = false;   // arrancó de nuevo o se canceló — corta la rotación
+        } else if (!displayEnScroll()
+                   && millis() - _finRotandoUltimoCambio >= (uint32_t)config.intervaloDisplay * 1000UL) {
+            _finRotandoUltimoCambio = millis();
+            if (_finRotandoMuestraTexto) displayTexto(config.textoJugarDeNuevo, config.velocidadScroll);
+            else                         displayMarcador(partido.goles[0], partido.goles[1]);
+            _finRotandoMuestraTexto = !_finRotandoMuestraTexto;
+        }
     }
 
     // ---- Comentarista: corre después de sensores, respeta _proximoComentario ----
