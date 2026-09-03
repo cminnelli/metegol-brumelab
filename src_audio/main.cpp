@@ -70,6 +70,13 @@ static uint32_t _finGolPendienteDesde = 0;
 // una vez que terminó de scrollear el "Fin! Ganador..." — ver loop()
 static bool    _torneoAnuncioPendiente = false;
 
+// Fin de partido SIN torneo en curso: invita a jugar de nuevo, una vez que
+// terminó de scrollear el "Fin! Ganador..." — ver loop()
+static bool    _jugarDeNuevoPendiente = false;
+
+// Ambiente genérico random apenas termina de sonar el pitido final — ver loop()
+static bool    _ambienteFinPendiente = false;
+
 // Muestra "Preparense X y Y" con los próximos jugadores del torneo, si corresponde
 static void anunciarProximosTorneo() {
     static char anuncio[64];   // MD_Parola guarda el puntero, no una copia — tiene que ser estático
@@ -245,7 +252,16 @@ void loop() {
         vozPitidoFinal();
         comentaristaFinalPartido(partido);
         displayGanador(_finGolGanador);
+        _ambienteFinPendiente = true;
         if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
+        else                                             _jugarDeNuevoPendiente = true;
+    }
+
+    // ---- Ambiente: arranca un track de ambiente genérico random apenas termina
+    //     de sonar el pitido final ----
+    if (_ambienteFinPendiente && !vozIsBusy()) {
+        _ambienteFinPendiente = false;
+        ambienteFinDePartido();
     }
 
     // ---- Torneo: anuncia a los próximos jugadores una vez que terminó de
@@ -253,6 +269,13 @@ void loop() {
     if (_torneoAnuncioPendiente && !displayEnScroll()) {
         _torneoAnuncioPendiente = false;
         anunciarProximosTorneo();
+    }
+
+    // ---- Sin torneo: invita a jugar de nuevo una vez que terminó de scrollear
+    //     el "Fin! Ganador..." ----
+    if (_jugarDeNuevoPendiente && !displayEnScroll()) {
+        _jugarDeNuevoPendiente = false;
+        displayTexto(config.textoJugarDeNuevo, config.velocidadScroll);
     }
 
     // ---- Comentarista: corre después de sensores, respeta _proximoComentario ----
@@ -397,7 +420,9 @@ void loop() {
             vozPitidoFinal();
             comentaristaFinalPartido(partido);
             displayGanador(w);
+            _ambienteFinPendiente = true;
             if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
+            else                                             _jugarDeNuevoPendiente = true;
             if (w == 0)      Serial.println("\n[JUEGO] ¡Ganó equipo 1! (tiempo)");
             else if (w == 1) Serial.println("\n[JUEGO] ¡Ganó equipo 2! (tiempo)");
             else             Serial.println("\n[JUEGO] ¡Empate! (tiempo)");

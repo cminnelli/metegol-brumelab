@@ -140,6 +140,7 @@ static void cargarConfig() {
     strlcpy(config.textoGanadorBlanco,  prefs.getString("txtGB",   "Fin! Ganador Blanco!").c_str(),    sizeof(config.textoGanadorBlanco));
     strlcpy(config.textoEmpate,         prefs.getString("txtEmp",  "Fin! Empate!").c_str(),            sizeof(config.textoEmpate));
     strlcpy(config.textoPreparense,     prefs.getString("txtPrep", "Preparense").c_str(),              sizeof(config.textoPreparense));
+    strlcpy(config.textoJugarDeNuevo,   prefs.getString("txtJDN",  "Presiona para jugar de nuevo!").c_str(), sizeof(config.textoJugarDeNuevo));
 
     // Comentarista — thresholds
     config.intervaloComentariosMin = prefs.getUShort("intervComMin",  12);
@@ -259,6 +260,7 @@ static void guardarConfig() {
     prefs.putString("txtGB",   config.textoGanadorBlanco);
     prefs.putString("txtEmp",  config.textoEmpate);
     prefs.putString("txtPrep", config.textoPreparense);
+    prefs.putString("txtJDN",  config.textoJugarDeNuevo);
 
     // Comentarista — thresholds
     prefs.putUShort("intervComMin",  config.intervaloComentariosMin);
@@ -626,6 +628,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <div class="field"><label>Fin — ganó blanco</label><input class="ti" type="text" name="txtGB" maxlength="26" value="%TXT_GB%"></div>
         <div class="field"><label>Fin — empate</label><input class="ti" type="text" name="txtEmp" maxlength="26" value="%TXT_EMP%"></div>
         <div class="field"><label>Anuncio próximo torneo (prefijo)</label><input class="ti" type="text" name="txtPrep" maxlength="18" value="%TXT_PREP%"></div>
+        <div class="field"><label>Después del ganador (sin torneo)</label><input class="ti" type="text" name="txtJDN" maxlength="30" value="%TXT_JDN%"></div>
       </div>
     </div>
   </div>
@@ -1089,6 +1092,7 @@ static String buildPage() {
     html.replace("%TXT_GB%",   config.textoGanadorBlanco);
     html.replace("%TXT_EMP%",  config.textoEmpate);
     html.replace("%TXT_PREP%", config.textoPreparense);
+    html.replace("%TXT_JDN%",  config.textoJugarDeNuevo);
     // Comentarista — thresholds
     html.replace("%INTERV_COM_MIN%", String(config.intervaloComentariosMin));
     html.replace("%INTERV_COM_MAX%", String(config.intervaloComentariosMax));
@@ -1194,6 +1198,7 @@ static void handleSave() {
     if (server.hasArg("txtGB"))   strlcpy(config.textoGanadorBlanco,  server.arg("txtGB").c_str(),   sizeof(config.textoGanadorBlanco));
     if (server.hasArg("txtEmp"))  strlcpy(config.textoEmpate,         server.arg("txtEmp").c_str(),  sizeof(config.textoEmpate));
     if (server.hasArg("txtPrep")) strlcpy(config.textoPreparense,     server.arg("txtPrep").c_str(), sizeof(config.textoPreparense));
+    if (server.hasArg("txtJDN"))  strlcpy(config.textoJugarDeNuevo,   server.arg("txtJDN").c_str(),  sizeof(config.textoJugarDeNuevo));
     // Comentarista — thresholds
     if (server.hasArg("intervaloComentariosMin")) config.intervaloComentariosMin = server.arg("intervaloComentariosMin").toInt();
     if (server.hasArg("intervaloComentariosMax")) config.intervaloComentariosMax = server.arg("intervaloComentariosMax").toInt();

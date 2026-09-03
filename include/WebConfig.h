@@ -34,6 +34,7 @@ struct Config {
     char textoGanadorBlanco[28];    // fin de partido, ganó blanco   — "Fin! Ganador Blanco!"
     char textoEmpate[28];           // fin de partido, empate        — "Fin! Empate!"
     char textoPreparense[20];       // prefijo del anuncio del próximo partido de torneo — "Preparense"
+    char textoJugarDeNuevo[32];     // tras el ganador, si no hay torneo en curso — "Presiona para jugar de nuevo!"
 
     // Comentarista — intervalo y thresholds
     uint16_t intervaloComentariosMin; // default 10

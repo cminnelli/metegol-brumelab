@@ -10,5 +10,6 @@ void        ambienteSetVolumen(uint8_t vol);
 void        ambienteReiniciar();
 void        ambienteActualizar(bool activo, bool esCaliente);
 void        ambienteOnGol();
+void        ambienteFinDePartido();     // ambiente genérico random, al terminar el pitido final
 const char* ambienteGetEstado();
 uint8_t     ambienteGetPista();
