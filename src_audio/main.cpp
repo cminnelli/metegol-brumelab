@@ -55,9 +55,16 @@ static unsigned long _sensor2LowAt = 0;
 #define SENSOR_MIN_LOW_MS 20              // duración mínima LOW para validar gol
 
 // Fin de partido por gol: el relato del gol (SP1) y la reacción (SP2) tienen que
-// terminar de sonar antes de disparar el pitido final — ver loop()
-static bool    _finGolPendiente = false;
-static int8_t  _finGolGanador   = -1;
+// terminar de sonar antes de disparar el pitido final — ver loop().
+// _finGolPendienteDesde + FIN_GOL_MAX_ESPERA_MS acotan la espera: si algo se cuelga
+// (ej. SP1 nunca avisa que terminó), se fuerza igual en vez de quedar trabado para
+// siempre. Mientras _finGolPendiente sea true, el botón de "nuevo partido"/cancelar
+// se ignora — evita que arrancar el próximo partido cancele en silencio el pitido,
+// el cartel de "Ganador" y el comentario final del partido que recién terminó.
+static bool     _finGolPendiente      = false;
+static int8_t   _finGolGanador        = -1;
+static uint32_t _finGolPendienteDesde = 0;
+#define FIN_GOL_MAX_ESPERA_MS 7000UL
 
 // Fin de partido de torneo: anuncia en la farola quiénes juegan a continuación,
 // una vez que terminó de scrollear el "Fin! Ganador..." — ver loop()
@@ -70,6 +77,12 @@ static void anunciarProximosTorneo() {
     if (!torneoProximosNombres(nombres, sizeof(nombres))) return;
     snprintf(anuncio, sizeof(anuncio), "%s %s", config.textoPreparense, nombres);
     displayTexto(anuncio, config.velocidadScroll);
+}
+
+// Llamado desde WebConfig antes de arrancar/reanudar un partido por web — evita la
+// misma carrera que el botón del encoder (ver _finGolPendiente arriba)
+bool finDePartidoPendiente() {
+    return _finGolPendiente;
 }
 
 // Llamado desde WebConfig al iniciar/reanudar via web — resetea sensores igual que el encoder
@@ -187,8 +200,9 @@ void loop() {
                     int8_t w = partido.ganador();
                     Serial.printf("     → FINAL  |  %s\n",
                         w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
-                    _finGolPendiente = true;
-                    _finGolGanador   = w;
+                    _finGolPendiente      = true;
+                    _finGolGanador        = w;
+                    _finGolPendienteDesde = millis();
                 }
             }
         }
@@ -207,8 +221,9 @@ void loop() {
                     int8_t w = partido.ganador();
                     Serial.printf("     → FINAL  |  %s\n",
                         w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
-                    _finGolPendiente = true;
-                    _finGolGanador   = w;
+                    _finGolPendiente      = true;
+                    _finGolGanador        = w;
+                    _finGolPendienteDesde = millis();
                 }
             }
         }
@@ -217,8 +232,11 @@ void loop() {
     _prevSensor2 = cur2;
 
     // ---- Fin de partido por gol: espera a que termine el relato del gol (SP1) y
-    //     la reacción de gol (SP2) antes de disparar el pitido final ----
-    if (_finGolPendiente && !vozIsBusy() && strcmp(ambienteGetEstado(), "gol_reaccion") != 0) {
+    //     la reacción de gol (SP2) antes de disparar el pitido final — con techo:
+    //     si algo se cuelga, se fuerza igual pasados FIN_GOL_MAX_ESPERA_MS ----
+    if (_finGolPendiente &&
+        ((!vozIsBusy() && strcmp(ambienteGetEstado(), "gol_reaccion") != 0)
+         || (millis() - _finGolPendienteDesde > FIN_GOL_MAX_ESPERA_MS))) {
         _finGolPendiente = false;
         // No se llama ambienteReiniciar() acá: el ambiente que ya está sonando
         // (genérico o caliente) sigue de fondo durante el pitido y el comentario
@@ -294,6 +312,15 @@ void loop() {
         }
 
         if (btnPending > 0 && (now - btnReleaseAt) >= BTN_DOUBLE_MS) {
+            if (_finGolPendiente) {
+                // Todavía falta sonar el pitido/ganador/comentario final del gol que
+                // acaba de terminar el partido — se ignora el click para no cancelarlo
+                // en silencio (queda acotado por FIN_GOL_MAX_ESPERA_MS, nunca traba del todo).
+                Serial.println("\n[ENCODER] Click ignorado — esperando cierre del partido anterior");
+                btnPending = 0;
+                noInterrupts(); encDelta = 0; encChanged = false; interrupts();
+                return;
+            }
             if (btnPending == 1) {
                 // Click simple
                 if (!partido.activo && !partido.terminado && !partido.pausado) {

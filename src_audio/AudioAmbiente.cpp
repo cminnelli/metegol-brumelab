@@ -34,7 +34,9 @@ static uint32_t _trackStartAt  = 0;   // para reportar duración al cambiar de p
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Transición con fade-out: baja volumen, cambia pista, restaura volumen 250ms después
+// Transición con fade-out: baja volumen, cambia pista, restaura volumen 700ms después.
+// loop=false se usa para pistas de un solo disparo (hinchada) que igual quieren el fade
+// al entrar — _pistaActual se guarda igual para que las stats muestren la pista real.
 static void tocarConTransicion(const RangoAudio& r, const char* label, bool loop) {
     bool     fade         = (_pistaActual > 0 && _pendingVol == 0);
     uint8_t  pistaAnterior = _pistaActual;
@@ -46,7 +48,7 @@ static void tocarConTransicion(const RangoAudio& r, const char* label, bool loop
         cmd(0x06, 0x00, 0);
     }
     uint8_t pista = r.desde + random(r.hasta - r.desde + 1);
-    _pistaActual  = loop ? pista : 0;
+    _pistaActual  = pista;
     _trackStartAt = millis();
     cmd(0x03, 0x00, pista);
     if (loop) cmd(0x19, 0x00, 0x00);
@@ -57,14 +59,16 @@ static void tocarConTransicion(const RangoAudio& r, const char* label, bool loop
         Serial.printf("     %-14s pista %d\n", label, pista);
 }
 
-// One-shot sin fade (reacciones inmediatas: gol_reaccion, hinchada)
+// One-shot instantáneo, sin hueco de silencio (hinchada, gol_reaccion). Probado en
+// mesa real que suena bien así — un intento anterior de agregarle fade metía 700ms
+// de silencio real que no estaba antes.
 static void tocarUnaVez(const RangoAudio& r, const char* label) {
     if (_pendingVol > 0) {
         cmd(0x06, 0x00, config.volumenAmbiente);
         _pendingVol = 0;
     }
     uint8_t pista = r.desde + random(r.hasta - r.desde + 1);
-    _pistaActual  = pista;   // para que stats muestre la pista correcta
+    _pistaActual  = pista;
     _trackStartAt = millis();
     cmd(0x03, 0x00, pista);
     Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
@@ -169,9 +173,11 @@ void ambientePoll() {
 void ambienteActualizar(bool activo, bool esCaliente) {
     if (!activo) return;   // deja que SP2 siga; ambienteReiniciar() lo para
 
-    // Timeout de seguridad: si SP2 lleva más de 15s en gol_reaccion sin recibir 0x3D, forzar salida
+    // Timeout de seguridad: si SP2 lleva más de golReaccionTimeoutSegs en gol_reaccion sin
+    // recibir 0x3D, forzar salida. Los DFPlayer clones a veces no mandan ese aviso — parametrizado
+    // en Ajustes para poder afinarlo en la mesa real sin recompilar.
     if (_modo == AmbModo::GOL_REACCION) {
-        if (millis() - _trackStartAt > 15000UL) {
+        if (millis() - _trackStartAt > (uint32_t)config.golReaccionTimeoutSegs * 1000UL) {
             Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
             Serial.printf("     gol_reaccion timeout → forzando salida\n");
             if (!_hinchadaFired && _golesPartido >= config.hinchadaGol) {

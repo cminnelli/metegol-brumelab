@@ -1,0 +1,1 @@
+Esta carpeta queda vacía a propósito — PlatformIO exige que `src/` (el `src_dir` por default) exista físicamente, aunque ningún entorno la use. El código activo vive en `src_audio/` (ver `platformio.ini`).

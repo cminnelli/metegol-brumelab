@@ -46,6 +46,8 @@ struct Config {
     uint16_t primerosMinsSegs;        // seg de PRIMEROS_MINUTOS (default 120)
     uint16_t ultimoTramoSegs;         // seg restantes para ultimo_tramo en modo tiempo (default 60)
     uint16_t umbralAburridoSegs;      // seg sin goles para ABURRIDO aunque haya goleada (default 180)
+    uint8_t  golReaccionTimeoutSegs;  // watchdog SP2: fuerza salida de gol_reaccion si el DFPlayer
+                                      // no avisa que terminó (default 4)
 
     // Comentarista — rangos por estado (pistas 01–54)
     RangoAudio comentInicio;          // {1,  6}

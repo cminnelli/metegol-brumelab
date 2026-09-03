@@ -8,6 +8,7 @@
 #include <string.h>
 
 extern void resetearDeteccionGoles();  // definida en main.cpp
+extern bool finDePartidoPendiente();   // definida en main.cpp — true mientras falta el cierre del gol final
 
 static Partido* _partido = nullptr;
 #include <WiFi.h>
@@ -151,6 +152,7 @@ static void cargarConfig() {
     config.primerosMinsSegs        = prefs.getUShort("primMinsSegs",  20);  // 20s de apertura
     config.ultimoTramoSegs         = prefs.getUShort("ultiTramoSeg",  60);  // últimos 60s = tensión
     config.umbralAburridoSegs      = prefs.getUShort("umbralAbur",   50);  // 50s sin goles = aburrido
+    config.golReaccionTimeoutSegs  = prefs.getUChar("golReaccTO",    4);   // watchdog SP2 gol_reaccion
     // Comentarista — rangos por estado
     config.comentInicio.desde       = prefs.getUChar("cInD",   1);
     config.comentInicio.hasta       = prefs.getUChar("cInH",   6);
@@ -269,6 +271,7 @@ static void guardarConfig() {
     prefs.putUShort("primMinsSegs",  config.primerosMinsSegs);
     prefs.putUShort("ultiTramoSeg",  config.ultimoTramoSegs);
     prefs.putUShort("umbralAbur",    config.umbralAburridoSegs);
+    prefs.putUChar("golReaccTO",     config.golReaccionTimeoutSegs);
     // Comentarista — rangos estado
     prefs.putUChar("cInD",  config.comentInicio.desde);
     prefs.putUChar("cInH",  config.comentInicio.hasta);
@@ -739,6 +742,11 @@ static const char HTML[] PROGMEM = R"rawhtml(
           <label>Hinchada después del gol # <b id="hgb">%HINCH_GOL%</b></label>
           <input type="range" name="hincGol" min="1" max="10" value="%HINCH_GOL%" oninput="sl(this,'hgb');document.getElementById('hg').textContent=this.value">
         </div>
+        <div class="field">
+          <label>Timeout reacción gol seg <b id="grt">%GOL_REACC_TO%</b></label>
+          <input type="range" name="golReaccionTimeoutSegs" min="1" max="15" value="%GOL_REACC_TO%" oninput="sl(this,'grt')">
+          <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Si el DFPlayer no avisa que terminó la reacción de gol, se fuerza la salida después de este tiempo (subilo si se corta el audio antes de tiempo; bajalo si sentís silencio de más).</p>
+        </div>
         <table class="rt">
           <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
           <tbody>
@@ -899,7 +907,12 @@ static const char HTML[] PROGMEM = R"rawhtml(
       }
     }).catch(()=>{});
   }
-  function iniciarPartido(){fetch('/start',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});}
+  function iniciarPartido(){
+    fetch('/start',{method:'POST'}).then(r=>r.json()).then(j=>{
+      if(j.ok) actualizarMarcador();
+      else setTimeout(iniciarPartido,1000);  // cierre del partido anterior todavía pendiente — reintenta
+    }).catch(()=>{});
+  }
   function pararPartido(){fetch('/stop',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});}
   actualizarMarcador();setInterval(actualizarMarcador,3000);
   document.getElementById('cfg').addEventListener('submit',function(e){
@@ -953,7 +966,10 @@ static const char HTML[] PROGMEM = R"rawhtml(
   }
   function jugarProximo(){
     fetch('/torneo/jugarProximo',{method:'POST'}).then(r=>r.json()).then(j=>{
-      if(j.ok) fetch('/start',{method:'POST'}).then(()=>{showTab('partido');actualizarTorneo();});
+      if(!j.ok) return;
+      iniciarPartido();
+      showTab('partido');
+      actualizarTorneo();
     });
   }
   function confirmarTorneo(){
@@ -1084,6 +1100,7 @@ static String buildPage() {
     html.replace("%ULTI_TRAMO%",     String(config.ultimoTramoSegs));
 
     html.replace("%UMBRAL_ABUR%",    String(config.umbralAburridoSegs));
+    html.replace("%GOL_REACC_TO%",   String(config.golReaccionTimeoutSegs));
     // Comentarista — rangos estado
     html.replace("%C_IN_D%", String(config.comentInicio.desde));
     html.replace("%C_IN_H%", String(config.comentInicio.hasta));
@@ -1188,6 +1205,7 @@ static void handleSave() {
     if (server.hasArg("primerosMinsSegs"))     config.primerosMinsSegs     = constrain(server.arg("primerosMinsSegs").toInt(), 10, 30);
     if (server.hasArg("ultimoTramoSegs"))      config.ultimoTramoSegs      = server.arg("ultimoTramoSegs").toInt();
     if (server.hasArg("umbralAburridoSegs"))   config.umbralAburridoSegs   = server.arg("umbralAburridoSegs").toInt();
+    if (server.hasArg("golReaccionTimeoutSegs")) config.golReaccionTimeoutSegs = constrain(server.arg("golReaccionTimeoutSegs").toInt(), 1, 15);
     // Comentarista — rangos estado
     if (server.hasArg("cInD")) config.comentInicio.desde          = server.arg("cInD").toInt();
     if (server.hasArg("cInH")) config.comentInicio.hasta          = server.arg("cInH").toInt();
@@ -1292,6 +1310,12 @@ static void handleEstado() {
 }
 
 static void handleStart() {
+    if (finDePartidoPendiente()) {
+        // Todavía falta sonar el pitido/ganador/comentario final del partido anterior —
+        // arrancar ahora lo cancelaría en silencio (ver _finGolPendiente en main.cpp)
+        server.send(409, "application/json", "{\"ok\":false,\"error\":\"cierre_pendiente\"}");
+        return;
+    }
     if (_partido) {
         if (_partido->pausado) {
             _partido->activo  = true;
