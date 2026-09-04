@@ -22,16 +22,13 @@ static void borrarTorneoNVS() {
 }
 
 void torneoInit() {
+    // El torneo ya no se restaura al arrancar — cada reinicio del ESP32 empieza
+    // siempre con torneo.activo=false, sin nada cargado. Evita que un torneo
+    // armado en una sesión anterior (y nunca confirmado/cancelado) interfiera
+    // con partidos individuales en sesiones futuras.
     memset(&torneo, 0, sizeof(Torneo));
     torneo.partidoEnJuego = -1;
     torneo.campeon        = -1;
-    prefsT.begin("metegol-torneo", true);
-    // Si el tamaño guardado no coincide con el struct actual (ej: firmware actualizado),
-    // se descarta y arranca vacío en vez de leer memoria con el layout viejo.
-    if (prefsT.getBytesLength("data") == sizeof(Torneo)) {
-        prefsT.getBytes("data", &torneo, sizeof(Torneo));
-    }
-    prefsT.end();
 }
 
 void torneoCancelar() {

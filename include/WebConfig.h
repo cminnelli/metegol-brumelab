@@ -49,6 +49,8 @@ struct Config {
     uint16_t umbralAburridoSegs;      // seg sin goles para ABURRIDO aunque haya goleada (default 180)
     uint8_t  golReaccionTimeoutSegs;  // watchdog SP2: fuerza salida de gol_reaccion si el DFPlayer
                                       // no avisa que terminó (default 4)
+    uint8_t  hinchadaTimeoutSegs;     // watchdog SP2: fuerza salida de hinchada si el DFPlayer
+                                      // no avisa que terminó — dura más que gol_reaccion (default 20)
 
     // Comentarista — rangos por estado (pistas 01–54)
     RangoAudio comentInicio;          // {1,  6}
@@ -88,6 +90,9 @@ struct Config {
     RangoAudio hinchadaMusica;        // {5, 8}
     RangoAudio momentoCaliente;       // {9, 11}
     RangoAudio ambienteGol;           // {12, 17}
+    int8_t     ambienteGenericoBoost; // ajuste de volumen (+/-) solo para "ambiente genérico" —
+                                      // compensa si esas pistas están grabadas más flojas que
+                                      // la reacción de gol/hinchada (default 0)
 };
 
 extern Config config;

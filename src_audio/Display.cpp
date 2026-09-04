@@ -1,6 +1,7 @@
 #include "Display.h"
 #include "WebConfig.h"
 #include <Arduino.h>
+#include <string.h>
 #include <MD_Parola.h>
 #include <MD_MAX72XX.h>
 #include <SPI.h>
@@ -55,6 +56,10 @@ static void asciiSanitize(const char* in, char* out, size_t outLen) {
 static void scrollSanitizado(const char* texto, textPosition_t align, textEffect_t efecto, uint16_t velocidad) {
     static char buf[64];
     asciiSanitize(texto, buf, sizeof(buf));
+    // Espacio final para que el texto no quede pegado contra lo que venga después
+    // (el marcador, el próximo scroll, etc.)
+    size_t len = strlen(buf);
+    if (len + 1 < sizeof(buf)) { buf[len] = ' '; buf[len + 1] = '\0'; }
     disp.displayScroll(buf, align, efecto, velocidad);
 }
 
@@ -113,9 +118,9 @@ void displayModo(const char* texto) {
 }
 
 void displayTiempo(uint32_t ms) {
-    static char buf[8];   // estático: MD_Parola guarda el puntero, no una copia
+    static char buf[10];   // estático: MD_Parola guarda el puntero, no una copia
     uint32_t seg = ms / 1000;
-    snprintf(buf, sizeof(buf), "%02lu:%02lu", seg / 60, seg % 60);
+    snprintf(buf, sizeof(buf), "%02lu:%02lu ", seg / 60, seg % 60);   // espacio final
     disp.displayScroll(buf, PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
     _enScroll = true;
 }

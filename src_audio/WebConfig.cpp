@@ -119,8 +119,8 @@ static void addOrUpdateNet(const char* ssid, const char* pass) {
 
 static void cargarConfig() {
     prefs.begin("metegol", false);   // false = lectura/escritura (necesario para guardar versión)
-    config.volumenVoz      = 30;
-    config.volumenAmbiente = 30;
+    config.volumenVoz      = prefs.getUChar("volVoz", 28);
+    config.volumenAmbiente = prefs.getUChar("volAmb", 28);
     config.modoJuego       = 0;  // siempre arranca en goles
     config.golesMax        = prefs.getUChar("golesMax",    4);
     config.duracionMin     = prefs.getUShort("durMin",     5);
@@ -153,7 +153,9 @@ static void cargarConfig() {
     config.primerosMinsSegs        = prefs.getUShort("primMinsSegs",  20);  // 20s de apertura
     config.ultimoTramoSegs         = prefs.getUShort("ultiTramoSeg",  60);  // últimos 60s = tensión
     config.umbralAburridoSegs      = prefs.getUShort("umbralAbur",   50);  // 50s sin goles = aburrido
-    config.golReaccionTimeoutSegs  = prefs.getUChar("golReaccTO",    4);   // watchdog SP2 gol_reaccion
+    config.golReaccionTimeoutSegs  = prefs.getUChar("golReaccTO",    2);   // watchdog SP2 gol_reaccion
+    config.hinchadaTimeoutSegs     = prefs.getUChar("hinchTO",      20);   // watchdog SP2 hinchada
+    config.ambienteGenericoBoost   = prefs.getChar("ambGenBoost",    0);   // compensación de volumen ambiente genérico
     // Comentarista — rangos por estado
     config.comentInicio.desde       = prefs.getUChar("cInD",   1);
     config.comentInicio.hasta       = prefs.getUChar("cInH",   6);
@@ -274,6 +276,8 @@ static void guardarConfig() {
     prefs.putUShort("ultiTramoSeg",  config.ultimoTramoSegs);
     prefs.putUShort("umbralAbur",    config.umbralAburridoSegs);
     prefs.putUChar("golReaccTO",     config.golReaccionTimeoutSegs);
+    prefs.putUChar("hinchTO",        config.hinchadaTimeoutSegs);
+    prefs.putChar("ambGenBoost",     config.ambienteGenericoBoost);
     // Comentarista — rangos estado
     prefs.putUChar("cInD",  config.comentInicio.desde);
     prefs.putUChar("cInH",  config.comentInicio.hasta);
@@ -747,8 +751,18 @@ static const char HTML[] PROGMEM = R"rawhtml(
         </div>
         <div class="field">
           <label>Timeout reacción gol seg <b id="grt">%GOL_REACC_TO%</b></label>
-          <input type="range" name="golReaccionTimeoutSegs" min="1" max="15" value="%GOL_REACC_TO%" oninput="sl(this,'grt')">
+          <input type="range" name="golReaccionTimeoutSegs" min="1" max="60" value="%GOL_REACC_TO%" oninput="sl(this,'grt')">
           <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Si el DFPlayer no avisa que terminó la reacción de gol, se fuerza la salida después de este tiempo (subilo si se corta el audio antes de tiempo; bajalo si sentís silencio de más).</p>
+        </div>
+        <div class="field">
+          <label>Timeout hinchada seg <b id="hct">%HINCH_TO%</b></label>
+          <input type="range" name="hinchadaTimeoutSegs" min="5" max="60" value="%HINCH_TO%" oninput="sl(this,'hct')">
+          <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Igual que el de arriba, pero para la hinchada — dura más, por eso el número por defecto es más alto.</p>
+        </div>
+        <div class="field">
+          <label>Ajuste volumen ambiente genérico <b id="agb">%AMB_GEN_BOOST%</b></label>
+          <input type="range" name="ambienteGenericoBoost" min="-10" max="10" value="%AMB_GEN_BOOST%" oninput="sl(this,'agb')">
+          <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Si el ambiente genérico suena más flojo que la reacción de gol/hinchada, subilo acá para compensar (no toca el volumen general).</p>
         </div>
         <table class="rt">
           <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
@@ -1105,6 +1119,8 @@ static String buildPage() {
 
     html.replace("%UMBRAL_ABUR%",    String(config.umbralAburridoSegs));
     html.replace("%GOL_REACC_TO%",   String(config.golReaccionTimeoutSegs));
+    html.replace("%HINCH_TO%",       String(config.hinchadaTimeoutSegs));
+    html.replace("%AMB_GEN_BOOST%",  String(config.ambienteGenericoBoost));
     // Comentarista — rangos estado
     html.replace("%C_IN_D%", String(config.comentInicio.desde));
     html.replace("%C_IN_H%", String(config.comentInicio.hasta));
@@ -1210,7 +1226,9 @@ static void handleSave() {
     if (server.hasArg("primerosMinsSegs"))     config.primerosMinsSegs     = constrain(server.arg("primerosMinsSegs").toInt(), 10, 30);
     if (server.hasArg("ultimoTramoSegs"))      config.ultimoTramoSegs      = server.arg("ultimoTramoSegs").toInt();
     if (server.hasArg("umbralAburridoSegs"))   config.umbralAburridoSegs   = server.arg("umbralAburridoSegs").toInt();
-    if (server.hasArg("golReaccionTimeoutSegs")) config.golReaccionTimeoutSegs = constrain(server.arg("golReaccionTimeoutSegs").toInt(), 1, 15);
+    if (server.hasArg("golReaccionTimeoutSegs")) config.golReaccionTimeoutSegs = constrain(server.arg("golReaccionTimeoutSegs").toInt(), 1, 60);
+    if (server.hasArg("hinchadaTimeoutSegs"))    config.hinchadaTimeoutSegs    = constrain(server.arg("hinchadaTimeoutSegs").toInt(), 5, 60);
+    if (server.hasArg("ambienteGenericoBoost"))  config.ambienteGenericoBoost  = (int8_t)constrain(server.arg("ambienteGenericoBoost").toInt(), -10, 10);
     // Comentarista — rangos estado
     if (server.hasArg("cInD")) config.comentInicio.desde          = server.arg("cInD").toInt();
     if (server.hasArg("cInH")) config.comentInicio.hasta          = server.arg("cInH").toInt();
