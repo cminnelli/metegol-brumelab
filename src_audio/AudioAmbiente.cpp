@@ -260,9 +260,17 @@ void ambienteActualizar(bool activo, bool esCaliente) {
 void ambienteOnGol() {
     if (_modo == AmbModo::PARADO) return;
     _golesPartido++;
+    // Si ya está sonando una reacción de gol, no la corta a mitad de pista para
+    // arrancar otra — la deja terminar entera. El gol igual quedó contado arriba
+    // (para el trigger de hinchada); solo se ignora el retrigger de audio.
+    if (_modo == AmbModo::GOL_REACCION) return;
     _modoAnteGol = _modo;
-    _modo = AmbModo::GOL_REACCION;
     if (_pendingVol > 0) { cmd(0x06, 0x00, config.volumenAmbiente); _pendingVol = 0; }
+    // Sin fade acá: cada paso de volumen tiene un delay(150) fijo del protocolo
+    // DFPlayer, así que un fade-out real suma ~1s de pasos/silencio audibles antes
+    // de que entre la reacción — peor que el corte directo. Instantáneo, ya
+    // probado en mesa real que suena bien así.
+    _modo = AmbModo::GOL_REACCION;
     uint8_t pista = config.ambienteGol.desde + random(config.ambienteGol.hasta - config.ambienteGol.desde + 1);
     _pistaActual  = pista;
     _trackStartAt = millis();
