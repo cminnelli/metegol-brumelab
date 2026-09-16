@@ -7,23 +7,25 @@
 
 static bool     _activo          = false;
 static uint32_t _ultimaActividad = 0;
-static uint32_t _ultimoScroll    = 0;
 static bool     _jugandoPrev     = false;  // activo||pausado del tick anterior
 
 static void entrar() {
     _activo = true;
-    setCpuFrequencyMhz(80);   // 240→80: WiFi sigue andando, consumo baja bastante
-    displayEntrarReposo(config.textoReposo, config.reposoBrillo);
+    // Reposo real: farola y WiFi apagados de hardware, no solo atenuados — el
+    // objetivo es que consuma lo mínimo posible si se queda así toda la noche.
+    setCpuFrequencyMhz(80);
+    displayApagar();
     ambienteEntrarReposo();
     vozEntrarReposo();
-    _ultimoScroll = millis();
+    webConfigApagarWifi();
     Serial.println("\n[REPOSO] Entrando en reposo");
 }
 
 static void salir() {
     _activo = false;
     setCpuFrequencyMhz(240);
-    displaySalirReposo(config.brillo);
+    webConfigReactivarWifi();
+    displayEncender(config.brillo);
     ambienteSalirReposo();
     vozSalirReposo();
     Serial.println("\n[REPOSO] Saliendo de reposo");
@@ -51,17 +53,10 @@ void reposoTick(const Partido& partido) {
     _jugandoPrev = jugando;
 
     if (_activo) {
-        // El partido puede haber arrancado desde la web (/start), sin pasar
-        // por reposoNotificarActividad() — sale sola igual.
-        if (partido.activo || partido.pausado) {
-            salir();
-            return;
-        }
-        if (!displayEnScroll()
-            && millis() - _ultimoScroll >= (uint32_t)config.reposoIntervaloSegs * 1000UL) {
-            _ultimoScroll = millis();
-            displayTexto(config.textoReposo, config.velocidadScroll);
-        }
+        // Red de seguridad: si por algún camino el partido quedó activo estando
+        // en reposo, sale sola (normalmente ya salió por reposoNotificarActividad()
+        // al detectar el click del encoder que lo arrancó).
+        if (partido.activo || partido.pausado) salir();
         return;
     }
 

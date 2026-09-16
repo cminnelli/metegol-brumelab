@@ -5,14 +5,55 @@
 #define AMB_TX 16
 #define AMB_RX 17
 
-static void cmd(uint8_t c, uint8_t ph, uint8_t pl) {
+// Failsafe de hardware: gol_reaccion e hinchada tienen que terminar solos, avisados
+// por el 0x3D real del DFPlayer — esto NO es un recorte de duración normal, es la
+// red de seguridad para el caso límite de que el módulo se cuelgue y nunca avise.
+// Por eso el número es bien generoso (muy por encima de cualquier pista real) y no
+// es un parámetro de la web: no hay "duración correcta" que configurar, la pista
+// define su propia duración.
+#define GOL_REACCION_FAILSAFE_MS 15000UL
+#define HINCHADA_FAILSAFE_MS     90000UL
+
+// La hinchada suena como máximo esta cantidad de veces por partido (el gol que la
+// dispara + una "retoma" si otro gol la interrumpe mientras sigue sonando). Pasado el
+// tope, los goles siguientes solo reaccionan y vuelven al ambiente normal/caliente de
+// siempre — no vuelve a traer hinchada por el resto del partido.
+#define HINCHADA_MAX_VECES 2
+
+// Cola no bloqueante hacia el DFPlayer: antes cada comando hacía delay(150)
+// acá mismo, y los fades encadenaban varios de esos en un for — hasta 1-2s
+// bloqueados de un tirón. Ahora cmd() solo encola, y drenarCola() despacha de
+// a uno respetando el mismo espaciado (más el gap extra que algunos pasos
+// necesitan), sin frenar el loop. Se drena desde ambientePoll(), que ya se
+// llama en cada vuelta del loop principal.
+struct ComandoDF { uint8_t c, ph, pl; uint16_t gapMs; };
+#define AMB_COLA_CAP 8   // como mucho volumen + play + loop encolados a la vez, con margen
+static ComandoDF _cola[AMB_COLA_CAP];
+static uint8_t   _colaLen       = 0;
+static uint32_t  _ultimoEnvioAt = 0;
+static uint16_t  _gapPendiente  = 150;   // gap exigido antes del próximo envío
+
+static void cmd(uint8_t c, uint8_t ph, uint8_t pl, uint16_t gapMs = 150) {
+    if (_colaLen >= AMB_COLA_CAP) return;   // cola llena: se descarta el comando más nuevo antes que corromper el orden
+    _cola[_colaLen++] = { c, ph, pl, gapMs };
+}
+
+static void drenarCola() {
+    if (_colaLen == 0) return;
+    if (millis() - _ultimoEnvioAt < _gapPendiente) return;
+
+    ComandoDF actual = _cola[0];
     uint8_t buf[10];
-    buf[0]=0x7E; buf[1]=0xFF; buf[2]=0x06; buf[3]=c;
-    buf[4]=0x00; buf[5]=ph;   buf[6]=pl;
+    buf[0]=0x7E; buf[1]=0xFF; buf[2]=0x06; buf[3]=actual.c;
+    buf[4]=0x00; buf[5]=actual.ph; buf[6]=actual.pl;
     int16_t cs = -(int16_t)(buf[1]+buf[2]+buf[3]+buf[4]+buf[5]+buf[6]);
     buf[7]=(cs>>8)&0xFF; buf[8]=cs&0xFF; buf[9]=0xEF;
     Serial1.write(buf, 10);
-    delay(150);
+
+    _ultimoEnvioAt = millis();
+    _gapPendiente  = actual.gapMs;
+    for (uint8_t i = 1; i < _colaLen; i++) _cola[i - 1] = _cola[i];
+    _colaLen--;
 }
 
 // ── Estado ────────────────────────────────────────────────────────────────────
@@ -24,63 +65,68 @@ static AmbModo  _modoAnteGol   = AmbModo::PARADO; // modo antes de GOL_REACCION
 static uint8_t  _pistaActual   = 0;     // 0 = sin pista activa
 static bool     _enCaliente    = false; // sesión caliente activa
 static uint8_t  _calienteCount = 0;     // sesiones caliente por partido (máx 2)
-static bool     _hinchadaFired = false; // hinchada ya sonó en este partido
+static uint8_t  _hinchadaVeces = 0;     // cuántas veces sonó hinchada en este partido (tope: HINCHADA_MAX_VECES)
 static uint8_t  _golesPartido  = 0;    // goles totales del partido (para trigger hinchada)
-
-// Transición suave: fade-out al cambiar pista
-static uint8_t  _pendingVol    = 0;
-static uint32_t _pendingVolAt  = 0;
 static uint32_t _trackStartAt  = 0;   // para reportar duración al cambiar de pista
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Fade-out/in reales: suben/bajan el volumen en pasos (no un corte/salto
-// instantáneo). Cada paso pasa por cmd(), que ya tiene su propio delay(150).
-static void fadeOutAmbiente() {
-    for (int16_t v = (int16_t)config.volumenAmbiente - 5; v > 0; v -= 5) {
-        cmd(0x06, 0x00, (uint8_t)v);
-    }
-    cmd(0x06, 0x00, 0);
-}
-
-static void fadeInAmbiente(uint8_t target) {
-    for (int16_t v = 5; v < (int16_t)target; v += 5) {
-        cmd(0x06, 0x00, (uint8_t)v);
-    }
-    cmd(0x06, 0x00, target);
-}
-
-// Transición con fade real de ida y vuelta: baja volumen gradualmente, cambia
-// de pista, deja asentar 300ms, y sube el volumen gradual de nuevo — en vez de
-// un salto instantáneo a volumen completo (sonaba como si arrancara "bajito").
-// loop=false se usa para pistas de un solo disparo (hinchada) que igual quieren el fade
-// al entrar — _pistaActual se guarda igual para que las stats muestren la pista real.
-static void tocarConTransicion(const RangoAudio& r, const char* label, bool loop) {
-    bool     fade = (_pistaActual > 0 && _pendingVol == 0);
-    uint32_t durS = 0;
-    if (fade) {
-        durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
-        fadeOutAmbiente();
-    }
+// Cambia de pista de ambiente. Un DFPlayer no puede mezclar dos pistas — no hay
+// crossfade real posible con un solo módulo — así que el corte es directo e
+// instantáneo. (Se probó tapar el corte con un sonido corto de "transición" antes
+// de la pista nueva, pero depende de tener esos archivos extra grabados en la SD
+// y sumaba una fuente más de fallo del DFPlayer sin ganancia real — se descartó.)
+static void tocarAmbiente(const RangoAudio& r, const char* label, bool loop) {
     uint8_t pista = r.desde + random(r.hasta - r.desde + 1);
     _pistaActual  = pista;
     _trackStartAt = millis();
+    cmd(0x06, 0x00, config.volumenAmbiente);
     cmd(0x03, 0x00, pista);
     if (loop) cmd(0x19, 0x00, 0x00);
-    if (fade) {
-        delay(300);   // deja asentar la pista nueva antes de subir el volumen
-        // El ambiente genérico puede estar grabado más flojo que la reacción de
-        // gol/hinchada — este boost (parametrizable en Ajustes) lo compensa.
-        int16_t target = (int16_t)config.volumenAmbiente;
-        if (&r == &config.ambienteGenerico) target += config.ambienteGenericoBoost;
-        target = constrain(target, 0, 30);
-        fadeInAmbiente((uint8_t)target);
-    }
     Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
-    if (fade && durS > 0)
-        Serial.printf("     %-14s pista %d  |  %lus\n", label, pista, (unsigned long)durS);
-    else
-        Serial.printf("     %-14s pista %d\n", label, pista);
+    Serial.printf("     %-14s pista %d\n", label, pista);
+}
+
+// Decide a dónde vuelve SP2 cuando termina gol_reaccion — mismo camino tanto si el
+// DFPlayer avisó de verdad (0x3D, viaFailsafe=false) como si se fuerza por el failsafe
+// (viaFailsafe=true, que solo cambia el sufijo del log). La hinchada suena como máximo
+// HINCHADA_MAX_VECES veces por partido: el gol que la dispara + una "retoma" si otro gol
+// la interrumpe mientras sigue sonando — pasado el tope, cae al caso de abajo (vuelve a
+// ambiente normal/caliente) igual que si nunca hubiera habido hinchada.
+static void volverDeGolReaccion(bool viaFailsafe) {
+    if (viaFailsafe) {
+        Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+        Serial.printf("     gol_reaccion: el DFPlayer nunca avisó que terminó, failsafe forzando salida\n");
+    }
+    const char* wdComa = viaFailsafe ? ", wd" : "";   // sufijo dentro de "hinchada (...)"
+    const char* wdSolo = viaFailsafe ? " (wd)" : "";  // sufijo para "ambiente"/"caliente" sueltos
+    uint32_t durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
+    char lbl[24];
+    const RangoAudio* r;
+    bool loop;
+
+    if (_modoAnteGol == AmbModo::HINCHADA && _hinchadaVeces < HINCHADA_MAX_VECES) {
+        _hinchadaVeces++;
+        _modo = AmbModo::HINCHADA;
+        snprintf(lbl, sizeof(lbl), "hinchada (retoma%s)", wdComa);
+        r = &config.hinchadaMusica; loop = false;
+    } else if (_hinchadaVeces == 0 && _golesPartido >= config.hinchadaGol) {
+        _hinchadaVeces = 1;
+        _modo = AmbModo::HINCHADA;
+        snprintf(lbl, sizeof(lbl), "hinchada (once%s)", wdComa);
+        r = &config.hinchadaMusica; loop = false;
+    } else {
+        _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
+        r = (_modo == AmbModo::CALIENTE) ? &config.momentoCaliente : &config.ambienteGenerico;
+        snprintf(lbl, sizeof(lbl), "%s%s", (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente", wdSolo);
+        loop = true;
+    }
+
+    if (!viaFailsafe) {
+        Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+        Serial.printf("     gol_reaccion fin  |  %lus  →  %s\n", (unsigned long)durS, lbl);
+    }
+    tocarAmbiente(*r, lbl, loop);
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────
@@ -93,70 +139,60 @@ void ambienteSetVolumen(uint8_t vol) {
     cmd(0x06, 0x00, vol);
 }
 
+// "Reiniciar" acá es solo poner SP2 en silencio y limpiar su estado interno (modo,
+// pista, contadores) — no reinicia el ESP32 ni el módulo DFPlayer en sí. Se llama
+// tanto al bootear (arranque limpio) como al arrancar/cancelar un partido.
 void ambienteReiniciar() {
-    Serial.printf("\n──── SP2  REINICIAR  [%s  p:%d]\n", ambienteGetEstado(), _pistaActual);
-    if (_pendingVol > 0) {
-        cmd(0x06, 0x00, config.volumenAmbiente);  // restaura volumen antes de parar
-    }
+    Serial.printf("\n──── SP2  DETENIDO  [%s  p:%d]\n", ambienteGetEstado(), _pistaActual);
     cmd(0x0E, 0x00, 0x00);             // pausa SP2
     _modo          = AmbModo::PARADO;
     _modoAnteGol   = AmbModo::PARADO;
     _pistaActual   = 0;
-    _pendingVol    = 0;
-    _hinchadaFired = false;
+    _hinchadaVeces = 0;
     _golesPartido  = 0;
     _enCaliente    = false;
     _calienteCount = 0;
 }
 
 void ambientePoll() {
-    // Restaura volumen tras transición (no bloqueante)
-    if (_pendingVol > 0 && millis() >= _pendingVolAt) {
-        cmd(0x06, 0x00, _pendingVol);
-        _pendingVol = 0;
-    }
+    drenarCola();
 
-    // Watchdogs de timeout de gol_reaccion/hinchada — corren siempre (no solo
+    // Watchdogs de failsafe de gol_reaccion/hinchada — corren siempre (no solo
     // con partido.activo). Si el gol que dispara la hinchada es el que termina
     // el partido, partido.activo ya está en false para cuando esto se evalúa,
     // así que estos chequeos no pueden depender de ese flag: si dependieran,
     // el ambiente quedaba trabado en hinchada para siempre tras el pitido final,
     // porque no hay ningún otro evento (próximo gol, próximo partido) que lo saque.
     if (_modo == AmbModo::GOL_REACCION) {
-        if (millis() - _trackStartAt > (uint32_t)config.golReaccionTimeoutSegs * 1000UL) {
-            Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
-            Serial.printf("     gol_reaccion timeout → forzando salida\n");
-            if (_modoAnteGol == AmbModo::HINCHADA) {
-                _modo = AmbModo::HINCHADA;
-                tocarConTransicion(config.hinchadaMusica, "hinchada (retoma, wd)", false);
-            } else if (!_hinchadaFired && _golesPartido >= config.hinchadaGol) {
-                _hinchadaFired = true;
-                _modo = AmbModo::HINCHADA;
-                tocarConTransicion(config.hinchadaMusica, "hinchada (once, wd)", false);
-            } else {
-                _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
-                const RangoAudio& r = _enCaliente ? config.momentoCaliente : config.ambienteGenerico;
-                const char*     lbl = _enCaliente ? "caliente (wd)" : "ambiente (wd)";
-                tocarConTransicion(r, lbl, true);
-            }
+        if (millis() - _trackStartAt > GOL_REACCION_FAILSAFE_MS) {
+            volverDeGolReaccion(true);
         }
     } else if (_modo == AmbModo::HINCHADA) {
-        if (millis() - _trackStartAt > (uint32_t)config.hinchadaTimeoutSegs * 1000UL) {
+        if (millis() - _trackStartAt > HINCHADA_FAILSAFE_MS) {
             Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
-            Serial.printf("     hinchada timeout → forzando salida\n");
+            Serial.printf("     hinchada: el DFPlayer nunca avisó que terminó, failsafe forzando salida\n");
             _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
             const RangoAudio& r = _enCaliente ? config.momentoCaliente : config.ambienteGenerico;
             const char*     lbl = _enCaliente ? "caliente (wd)" : "ambiente (wd)";
-            tocarConTransicion(r, lbl, true);
+            tocarAmbiente(r, lbl, true);
         }
     }
 
     static uint8_t buf[10], idx = 0;
     while (Serial1.available()) {
         uint8_t b = Serial1.read();
-        if (b == 0x7E) idx = 0;
+        if (idx == 0) {
+            if (b == 0x7E) buf[idx++] = b;   // solo un 0x7E arranca una trama nueva
+            continue;
+        }
+        // A mitad de trama, un 0x7E es dato (ej. el checksum de la pista 64), no un
+        // reset — antes se perdía el aviso siempre que esto pasaba. No se valida el
+        // checksum en sí (bytes 7-8): los clones de DFPlayer de esta mesa no lo
+        // calculan según la fórmula estándar (ver nota en README), exigirlo acá tira
+        // avisos reales y todo termina cayendo al timeout del watchdog.
         if (idx < 10) buf[idx++] = b;
-        if (idx >= 10 && buf[9] == 0xEF) {
+        if (idx >= 10) {
+            if (buf[9] != 0xEF) { idx = 0; continue; }
             uint8_t tipo = buf[3], val = buf[6];
             switch (tipo) {
                 case 0x3F:
@@ -169,35 +205,22 @@ void ambientePoll() {
                     break;
                 case 0x3D: {
                     if (_modo == AmbModo::PARADO) break;
-                    uint32_t durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
+                    // val = número de pista que terminó. Como cmd() ahora encola (no bloquea), al
+                    // encolar el comando de una pista nueva _pistaActual se actualiza al instante
+                    // pero el comando "play" real puede tardar hasta ~150ms en salir por la cola —
+                    // en esa ventana puede llegar el 0x3D legítimo de la pista VIEJA, que sin este
+                    // chequeo se interpretaba como si la pista nueva ya hubiera terminado.
+                    if (val != _pistaActual) break;
                     if (_modo == AmbModo::GOL_REACCION) {
-                        if (_modoAnteGol == AmbModo::HINCHADA) {
-                            // venía de hinchada → retomar
-                            _modo = AmbModo::HINCHADA;
-                            Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
-                            Serial.printf("     gol_reaccion fin  |  %lus  →  hinchada (retoma)\n", (unsigned long)durS);
-                            tocarConTransicion(config.hinchadaMusica, "hinchada (retoma)", false);
-                        } else if (!_hinchadaFired && _golesPartido >= config.hinchadaGol) {
-                            _hinchadaFired = true;
-                            _modo = AmbModo::HINCHADA;
-                            Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
-                            Serial.printf("     gol_reaccion fin  |  %lus  →  hinchada\n", (unsigned long)durS);
-                            tocarConTransicion(config.hinchadaMusica, "hinchada (once)", false);
-                        } else {
-                            _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
-                            const RangoAudio& r = (_modo == AmbModo::CALIENTE) ? config.momentoCaliente : config.ambienteGenerico;
-                            const char*       lbl = (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente";
-                            Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
-                            Serial.printf("     gol_reaccion fin  |  %lus  →  %s\n", (unsigned long)durS, lbl);
-                            tocarConTransicion(r, lbl, true);
-                        }
+                        volverDeGolReaccion(false);
                     } else if (_modo == AmbModo::HINCHADA) {
+                        uint32_t durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
                         _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
                         const RangoAudio& r = (_modo == AmbModo::CALIENTE) ? config.momentoCaliente : config.ambienteGenerico;
                         const char*       lbl = (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente";
                         Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
                         Serial.printf("     hinchada fin  |  %lus  →  %s\n", (unsigned long)durS, lbl);
-                        tocarConTransicion(r, lbl, true);
+                        tocarAmbiente(r, lbl, true);
                     }
                     // NORMAL/CALIENTE: 0x19 loopea automáticamente — ignorar
                     break;
@@ -205,6 +228,21 @@ void ambientePoll() {
                 case 0x40:
                     Serial.printf("\n[ELEC] SP2: error 0x%02X  [modo:%s  p:%d]\n", val, ambienteGetEstado(), _pistaActual);
                     _pistaActual = 0;
+                    // La pista pedida falló (ej. archivo faltante en la SD) — no tiene
+                    // sentido esperar el failsafe de varios segundos para algo que ya
+                    // sabemos que no va a avisar 0x3D. Se recupera al toque, igual que
+                    // si hubiera terminado bien.
+                    if (_modo == AmbModo::GOL_REACCION) {
+                        volverDeGolReaccion(true);
+                    } else if (_modo == AmbModo::HINCHADA) {
+                        uint32_t durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
+                        _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
+                        const RangoAudio& r = (_modo == AmbModo::CALIENTE) ? config.momentoCaliente : config.ambienteGenerico;
+                        const char*       lbl = (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente";
+                        Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+                        Serial.printf("     hinchada fin  |  %lus  →  %s (err)\n", (unsigned long)durS, lbl);
+                        tocarAmbiente(r, lbl, true);
+                    }
                     break;
                 default: break;
             }
@@ -216,8 +254,8 @@ void ambientePoll() {
 void ambienteActualizar(bool activo, bool esCaliente) {
     if (!activo) return;   // deja que SP2 siga; ambienteReiniciar() lo para
 
-    // gol_reaccion/hinchada: se manejan por evento 0x3D (o su watchdog de timeout,
-    // en ambientePoll — corre siempre, incluso con el partido ya terminado). Acá
+    // gol_reaccion/hinchada: se manejan por evento 0x3D (o su watchdog de
+    // timeout, en ambientePoll — corre siempre, incluso con el partido ya terminado). Acá
     // no hay que hacer nada más que esperar a que salgan de ese estado.
     if (_modo == AmbModo::GOL_REACCION || _modo == AmbModo::HINCHADA) {
         return;
@@ -228,7 +266,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
         _calienteCount++;
         _enCaliente = true;
         _modo       = AmbModo::CALIENTE;
-        tocarConTransicion(config.momentoCaliente, "caliente", true);
+        tocarAmbiente(config.momentoCaliente, "caliente", true);
         return;
     }
 
@@ -237,7 +275,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
         _enCaliente = false;
         if (_modo == AmbModo::CALIENTE) {
             _modo = AmbModo::NORMAL;
-            tocarConTransicion(config.ambienteGenerico, "ambiente", true);
+            tocarAmbiente(config.ambienteGenerico, "ambiente", true);
         }
         return;
     }
@@ -245,7 +283,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
     // Arrancar NORMAL al iniciar el partido
     if (_modo == AmbModo::PARADO) {
         _modo = AmbModo::NORMAL;
-        tocarConTransicion(config.ambienteGenerico, "ambiente", true);
+        tocarAmbiente(config.ambienteGenerico, "ambiente", true);
         return;
     }
 
@@ -253,7 +291,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
     if (_pistaActual == 0) {
         const RangoAudio& r = (_modo == AmbModo::CALIENTE) ? config.momentoCaliente : config.ambienteGenerico;
         const char* lbl     = (_modo == AmbModo::CALIENTE) ? "caliente (wd)" : "ambiente (wd)";
-        tocarConTransicion(r, lbl, true);
+        tocarAmbiente(r, lbl, true);
     }
 }
 
@@ -265,7 +303,6 @@ void ambienteOnGol() {
     // (para el trigger de hinchada); solo se ignora el retrigger de audio.
     if (_modo == AmbModo::GOL_REACCION) return;
     _modoAnteGol = _modo;
-    if (_pendingVol > 0) { cmd(0x06, 0x00, config.volumenAmbiente); _pendingVol = 0; }
     // Sin fade acá: cada paso de volumen tiene un delay(150) fijo del protocolo
     // DFPlayer, así que un fade-out real suma ~1s de pasos/silencio audibles antes
     // de que entre la reacción — peor que el corte directo. Instantáneo, ya

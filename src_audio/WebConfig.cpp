@@ -10,6 +10,7 @@
 
 extern void resetearDeteccionGoles();  // definida en main.cpp
 extern bool finDePartidoPendiente();   // definida en main.cpp — true mientras falta el cierre del gol final
+extern void finalizarPartidoManual();  // definida en main.cpp — cierra el partido ya mismo, con pitido/comentario/ganador en la farola
 
 static Partido* _partido = nullptr;
 #include <WiFi.h>
@@ -18,8 +19,8 @@ static Partido* _partido = nullptr;
 #include <ESPmDNS.h>
 #include <Preferences.h>
 
-#define WIFI_SSID "Metegol"
-#define WIFI_PASS "metegol123"
+#define WIFI_SSID "Makergol"
+#define WIFI_PASS "makergol123"
 
 Config config;
 static WebServer server(80);
@@ -35,15 +36,16 @@ static uint8_t  _tryNetIdx   = 0;
 static bool     _staAnunciado = false;
 static uint32_t _staStartMs  = 0;
 static bool     _staGaveUp   = false;
+static bool     _wifiApagada = false;   // true mientras dura el reposo — ver webConfigApagarWifi()
 
 static void anunciarSTA() {
     if (_staAnunciado) return;
     _staAnunciado = true;
     Serial.println();
-    Serial.println("───────────────── Metegol online ─────────────────");
+    Serial.println("───────────────── Makergol online ─────────────────");
     Serial.printf ("  Red     : %s\n", WiFi.SSID().c_str());
     Serial.printf ("  IP      : http://%s/\n", WiFi.localIP().toString().c_str());
-    Serial.println("  DNS     : http://metegol.local/");
+    Serial.println("  DNS     : http://makergol.local/");
     Serial.println("──────────────────────────────────────────────────");
 }
 
@@ -116,13 +118,13 @@ static void addOrUpdateNet(const char* ssid, const char* pass) {
 
 // Versión del esquema de NVS para SP2.
 // Incrementar cada vez que cambien los key names de SP2 — fuerza defaults frescos.
-#define CONFIG_SP2_VERSION 5
+#define CONFIG_SP2_VERSION 6
 
 static void cargarConfig() {
     prefs.begin("metegol", false);   // false = lectura/escritura (necesario para guardar versión)
     config.volumenVoz      = prefs.getUChar("volVoz", 28);
     config.volumenAmbiente = prefs.getUChar("volAmb", 28);
-    config.modoJuego       = 0;  // siempre arranca en goles
+    config.modoJuego       = prefs.getUChar("modoJuego", 0);
     config.golesMax        = prefs.getUChar("golesMax",    4);
     config.duracionMin     = prefs.getUShort("durMin",     5);
     config.brillo          = prefs.getUChar("brillo",      5);
@@ -131,7 +133,7 @@ static void cargarConfig() {
     config.pistaAmbiente   = prefs.getUChar("pistaAmb",    3);
 
     // Display — textos customizables
-    strlcpy(config.textoBoot,           prefs.getString("txtBoot", "METEGOL!").c_str(),              sizeof(config.textoBoot));
+    strlcpy(config.textoBoot,           prefs.getString("txtBoot", "MAKERGOL!").c_str(),             sizeof(config.textoBoot));
     strlcpy(config.textoArranca,        prefs.getString("txtArr",  "ARRANCAAA!").c_str(),             sizeof(config.textoArranca));
     strlcpy(config.textoPausa,          prefs.getString("txtPau",  "PAUSA!").c_str(),                 sizeof(config.textoPausa));
     strlcpy(config.textoReanuda,        prefs.getString("txtRea",  "VAMOS!").c_str(),                 sizeof(config.textoReanuda));
@@ -142,7 +144,7 @@ static void cargarConfig() {
     strlcpy(config.textoEmpate,         prefs.getString("txtEmp",  "Fin! Empate!").c_str(),            sizeof(config.textoEmpate));
     strlcpy(config.textoPreparense,     prefs.getString("txtPrep", "Preparense").c_str(),              sizeof(config.textoPreparense));
     strlcpy(config.textoJugarDeNuevo,   prefs.getString("txtJDN",  "Presiona para jugar de nuevo!").c_str(), sizeof(config.textoJugarDeNuevo));
-    strlcpy(config.textoReposo,         prefs.getString("txtReposo", "METEGOL BRUMELAB - Toca para jugar!").c_str(), sizeof(config.textoReposo));
+    strlcpy(config.textoReposo,         prefs.getString("txtReposo", "MAKERGOL - Toca para jugar!").c_str(), sizeof(config.textoReposo));
 
     // Reposo
     config.standbyTimeoutSegs  = prefs.getUShort("stbyTO",   480);  // 8 min
@@ -160,9 +162,6 @@ static void cargarConfig() {
     config.primerosMinsSegs        = prefs.getUShort("primMinsSegs",  20);  // 20s de apertura
     config.ultimoTramoSegs         = prefs.getUShort("ultiTramoSeg",  60);  // últimos 60s = tensión
     config.umbralAburridoSegs      = prefs.getUShort("umbralAbur",   50);  // 50s sin goles = aburrido
-    config.golReaccionTimeoutSegs  = prefs.getUChar("golReaccTO",    2);   // watchdog SP2 gol_reaccion
-    config.hinchadaTimeoutSegs     = prefs.getUChar("hinchTO",      20);   // watchdog SP2 hinchada
-    config.ambienteGenericoBoost   = prefs.getChar("ambGenBoost",    0);   // compensación de volumen ambiente genérico
     // Comentarista — rangos por estado
     config.comentInicio.desde       = prefs.getUChar("cInD",   1);
     config.comentInicio.hasta       = prefs.getUChar("cInH",   6);
@@ -250,7 +249,7 @@ static void guardarConfig() {
     prefs.begin("metegol", false);
     prefs.putUChar("volVoz",    config.volumenVoz);
     prefs.putUChar("volAmb",    config.volumenAmbiente);
-    // modoJuego no se persiste — siempre arranca en goles
+    prefs.putUChar("modoJuego", config.modoJuego);
     prefs.putUChar("golesMax",  config.golesMax);
     prefs.putUShort("durMin",   config.duracionMin);
     prefs.putUChar("brillo",    config.brillo);
@@ -288,9 +287,6 @@ static void guardarConfig() {
     prefs.putUShort("primMinsSegs",  config.primerosMinsSegs);
     prefs.putUShort("ultiTramoSeg",  config.ultimoTramoSegs);
     prefs.putUShort("umbralAbur",    config.umbralAburridoSegs);
-    prefs.putUChar("golReaccTO",     config.golReaccionTimeoutSegs);
-    prefs.putUChar("hinchTO",        config.hinchadaTimeoutSegs);
-    prefs.putChar("ambGenBoost",     config.ambienteGenericoBoost);
     // Comentarista — rangos estado
     prefs.putUChar("cInD",  config.comentInicio.desde);
     prefs.putUChar("cInH",  config.comentInicio.hasta);
@@ -365,49 +361,62 @@ static const char HTML[] PROGMEM = R"rawhtml(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Metegol</title>
+<title>Makergol</title>
 <style>
   :root {
-    --bg: #0a0a0f;
-    --card: #13131e;
-    --border: #22223a;
-    --accent: #00e5ff;
-    --pink: #ff4081;
-    --purple: #7c4dff;
-    --green: #69f0ae;
-    --orange: #ff9100;
-    --celeste: #00b8d4;
-    --blanco: #eceff1;
-    --text: #e0e0e0;
-    --muted: #5a5a7a;
+    --bg: #0b0c0f;
+    --card: #16181c;
+    --border: #262931;
+    --accent: #22c55e;
+    --pink: #fb7185;
+    --purple: #64748b;
+    --green: #22c55e;
+    --orange: #f59e0b;
+    --celeste: #38bdf8;
+    --blanco: #f1f5f9;
+    --text: #e5e7eb;
+    --muted: #7c8394;
     --radius: 16px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; padding: 16px; }
   header { text-align: center; padding: 28px 0 22px; }
-  header h1 { font-size: 1.9rem; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; background: linear-gradient(135deg, var(--accent), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; color: var(--accent); }
   header p { color: var(--muted); font-size: .75rem; margin-top: 5px; letter-spacing: 2px; text-transform: uppercase; }
-  .wrap { max-width: 900px; margin: 0 auto; }
+  header p a { color: var(--accent); text-decoration: none; letter-spacing: normal; text-transform: none; }
+  header p a:hover { text-decoration: underline; }
+  .wrap { max-width: 720px; margin: 0 auto; }
   .partido-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
-  .status-bar { background: rgba(255,255,255,.03); border-bottom: 1px solid var(--border); padding: 9px 20px; text-align: center; font-size: .68rem; letter-spacing: 2.5px; text-transform: uppercase; color: var(--muted); }
-  .scoreboard { display: flex; align-items: center; padding: 22px 16px 12px; gap: 0; }
-  .team { flex: 1; text-align: center; }
-  .team-name { display: block; font-size: .62rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px; }
+  .status-row { display: flex; align-items: center; gap: 9px; background: rgba(255,255,255,.02); border-bottom: 1px solid var(--border); padding: 13px 20px; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .2s, box-shadow .2s; }
+  .status-dot.on { background: var(--accent); box-shadow: 0 0 0 3px rgba(34,197,94,.16); }
+  .status-dot.pausado { background: var(--orange); box-shadow: 0 0 0 3px rgba(245,158,11,.16); }
+  .status-txt { font-size: .72rem; font-weight: 600; letter-spacing: .3px; color: var(--muted); flex: 1; }
+  .modo-chip { font-size: .68rem; font-weight: 600; color: var(--muted); }
+  .scoreboard { display: flex; align-items: center; justify-content: center; max-width: 380px; margin: 0 auto; padding: 34px 16px 22px; gap: 0; }
+  .team { flex: 1; max-width: 150px; text-align: center; }
+  .team-name { display: block; font-size: .62rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px; }
   .team.c .team-name { color: var(--celeste); }
-  .team.b .team-name { color: #aaa; }
-  .team-score { display: block; font-size: 4.5rem; font-weight: 800; line-height: 1; }
-  .team.c .team-score { color: var(--celeste); text-shadow: 0 0 40px rgba(0,184,212,.35); }
-  .team.b .team-score { color: var(--blanco); text-shadow: 0 0 40px rgba(236,239,241,.2); }
-  .score-sep { font-size: 1.8rem; color: var(--border); padding: 0 16px; font-weight: 300; line-height: 1; align-self: center; }
-  .partido-meta { display: none; justify-content: center; gap: 28px; padding: 2px 20px 14px; flex-wrap: wrap; }
-  .meta-item { text-align: center; }
-  .meta-lbl { display: block; font-size: .58rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .team.b .team-name { color: var(--blanco); }
+  .team-score { display: block; font-size: 4.5rem; font-weight: 700; line-height: 1; }
+  .team.c .team-score { color: var(--celeste); }
+  .team.b .team-score { color: var(--blanco); }
+  .score-sep { font-size: 1.4rem; color: var(--border); padding: 0 16px; font-weight: 300; line-height: 1; align-self: center; }
+  .partido-meta { display: none; justify-content: center; padding: 0 20px 22px; }
+  .meta-strip { display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 14px; padding: 11px 4px; width: 100%; max-width: 460px; }
+  .meta-item { flex: 1; min-width: 0; text-align: center; padding: 0 8px; position: relative; }
+  .meta-item + .meta-item::before { content: ''; position: absolute; left: 0; top: 15%; bottom: 15%; width: 1px; background: var(--border); }
+  .meta-lbl { display: block; font-size: .58rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
   .meta-val { font-size: 1rem; font-weight: 600; color: var(--text); }
-  .estado-badge { display: inline-block; padding: 2px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; background: rgba(0,229,255,.1); color: var(--accent); }
-  .ganador-banner { display: none; text-align: center; padding: 10px 20px 0; font-size: 1.1rem; font-weight: 700; color: var(--accent); }
-  .btn-row { display: flex; gap: 10px; justify-content: center; padding: 14px 20px 20px; flex-wrap: wrap; }
-  .btn-start { padding: 11px 36px; background: linear-gradient(90deg,var(--accent),#0097a7); border: none; border-radius: 24px; color: #000; font-weight: 700; cursor: pointer; font-size: .88rem; letter-spacing: .5px; }
-  .btn-stop  { padding: 11px 36px; background: transparent; border: 1.5px solid #f44336; border-radius: 24px; color: #f44336; font-weight: 700; cursor: pointer; font-size: .88rem; display: none; }
+  .estado-badge { display: inline-flex; align-items: center; gap: 5px; font-size: .84rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
+  .estado-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .ganador-banner { display: none; text-align: center; padding: 0 20px 18px; font-size: 1.05rem; font-weight: 700; color: var(--accent); }
+  .btn-row { display: flex; align-items: center; gap: 8px; justify-content: center; padding: 4px 20px 24px; flex-wrap: wrap; }
+  .btn-start { padding: 12px 38px; background: var(--accent); border: none; border-radius: 24px; color: #04240f; font-weight: 600; cursor: pointer; font-size: .86rem; transition: opacity .15s; }
+  .btn-start:hover { opacity: .9; }
+  .btn-pause, .btn-restart, .btn-stop { padding: 10px 18px; background: transparent; border: 1px solid var(--border); border-radius: 20px; color: var(--muted); font-weight: 600; cursor: pointer; font-size: .8rem; display: none; transition: border-color .15s, color .15s; }
+  .btn-pause:hover, .btn-restart:hover { border-color: var(--muted); color: var(--text); }
+  .btn-stop:hover { border-color: #ef4444; color: #ef4444; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
   .card { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 20px 20px 18px; }
   .card.cg { border-left-color: var(--purple); }
@@ -423,7 +432,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
   input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--accent),0 2px 6px rgba(0,0,0,.5); cursor: pointer; }
   .toggle-row { display: flex; gap: 8px; }
   .toggle-btn { flex: 1; padding: 9px; border: 1.5px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted); font-size: .82rem; cursor: pointer; transition: all .15s; }
-  .toggle-btn.active { border-color: var(--purple); color: var(--purple); background: rgba(124,77,255,.1); }
+  .toggle-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(34,197,94,.12); }
   .ni { width: 54px; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .84rem; padding: 5px 7px; text-align: center; outline: none; transition: border-color .15s; }
   .ni:focus { border-color: var(--accent); }
   .ti { width: 100%; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .84rem; padding: 8px 10px; outline: none; transition: border-color .15s; }
@@ -437,21 +446,45 @@ static const char HTML[] PROGMEM = R"rawhtml(
   .rd { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
   .rd.g { background: var(--pink); }
   .save-bar { margin-top: 20px; padding: 12px 0 4px; text-align: center; }
-  .btn-save { padding: 14px 64px; background: linear-gradient(90deg,var(--accent),#0097a7); border: none; border-radius: 32px; color: #000; font-weight: 800; font-size: .95rem; letter-spacing: 2px; cursor: pointer; box-shadow: 0 0 0 1px rgba(0,229,255,.3), 0 8px 32px rgba(0,229,255,.35); transition: opacity .15s,transform .12s,box-shadow .15s; }
-  .btn-save:hover { box-shadow: 0 0 0 2px rgba(0,229,255,.6), 0 10px 40px rgba(0,229,255,.5); }
+  .btn-save { padding: 13px 48px; background: var(--accent); border: none; border-radius: 28px; color: #04240f; font-weight: 700; font-size: .88rem; letter-spacing: .5px; cursor: pointer; transition: opacity .15s,transform .12s; }
+  .btn-save:hover { opacity: .92; }
   .btn-save:active { opacity: .85; transform: scale(.97); }
   .sec-lbl { font-size: .61rem; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 11px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
   .rng-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
   @media(max-width:480px){ .rng-grid { grid-template-columns: 1fr; } }
-  #toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #000; padding: 10px 28px; border-radius: 30px; font-weight: 700; font-size: .86rem; transition: transform .26s; pointer-events: none; white-space: nowrap; z-index: 9999; }
+
+  .ajustes-list { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+  .acc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .acc-head { width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px 18px; background: transparent; border: none; cursor: pointer; text-align: left; }
+  .acc-ico { font-size: 1.35rem; line-height: 1; flex-shrink: 0; }
+  .acc-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .acc-title { font-weight: 700; font-size: .9rem; color: var(--text); }
+  .acc-sub { font-size: .72rem; color: var(--muted); }
+  .acc-chev { color: var(--muted); font-size: 1rem; transition: transform .2s ease; flex-shrink: 0; }
+  .acc.open .acc-chev { transform: rotate(180deg); }
+  .acc-body { max-height: 0; overflow: hidden; transition: max-height .3s ease, padding .3s ease; padding: 0 18px; }
+  .acc.open .acc-body { max-height: 2600px; padding: 2px 18px 20px; }
+  .btn-tecnico { padding: 8px 18px; background: transparent; border: 1px dashed var(--border); border-radius: 20px; color: var(--muted); font-weight: 600; font-size: .74rem; letter-spacing: .5px; cursor: pointer; }
+  .btn-tecnico:hover { border-color: var(--muted); color: var(--text); }
+  .info-ico { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,.08); color: var(--muted); font-size: .62rem; cursor: help; position: relative; }
+  .info-ico:hover, .info-ico:focus { outline: none; color: var(--text); }
+  .info-ico:hover::after, .info-ico:focus::after {
+    content: attr(data-tip); position: absolute; bottom: 135%; left: 50%; transform: translateX(-50%);
+    background: #000; color: #fff; padding: 7px 10px; border-radius: 8px; font-size: .68rem; font-weight: 400;
+    white-space: normal; width: 190px; line-height: 1.4; z-index: 20; box-shadow: 0 4px 16px rgba(0,0,0,.4); text-transform: none; letter-spacing: normal;
+  }
+  #toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #04240f; padding: 10px 28px; border-radius: 30px; font-weight: 700; font-size: .86rem; transition: transform .26s; pointer-events: none; white-space: nowrap; z-index: 9999; }
   #toast.show { transform: translateX(-50%) translateY(0); }
-  #fab-save { position: fixed; bottom: 22px; right: 22px; padding: 14px 22px; background: linear-gradient(135deg,var(--accent),#0097a7); border: none; border-radius: 50px; color: #000; font-weight: 800; font-size: .82rem; letter-spacing: 1.5px; cursor: pointer; box-shadow: 0 4px 24px rgba(0,229,255,.45); z-index: 9998; transition: transform .12s, box-shadow .15s; }
-  #fab-save:hover { transform: scale(1.05); box-shadow: 0 6px 32px rgba(0,229,255,.65); }
+  #fab-save { position: fixed; bottom: 22px; right: 22px; padding: 13px 24px; background: var(--accent); border: none; border-radius: 50px; color: #04240f; font-weight: 700; font-size: .82rem; letter-spacing: .5px; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,.35); z-index: 9998; transition: transform .12s; }
+  #fab-save:hover { transform: scale(1.05); }
   #fab-save:active { transform: scale(.96); }
+  #fab-play { display: none; position: fixed; bottom: 22px; left: 22px; padding: 13px 24px; background: var(--accent); border: none; border-radius: 50px; color: #04240f; font-weight: 700; font-size: .82rem; letter-spacing: .5px; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,.35); z-index: 9998; transition: transform .12s; }
+  #fab-play:hover { transform: scale(1.05); }
+  #fab-play:active { transform: scale(.96); }
 
   .tabs { display: flex; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 5px; margin-bottom: 18px; }
   .tab-btn { flex: 1; padding: 10px 6px; border: none; border-radius: 10px; background: transparent; color: var(--muted); font-weight: 700; font-size: .78rem; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; transition: all .15s; }
-  .tab-btn.active { background: linear-gradient(135deg, var(--accent), var(--pink)); color: #000; }
+  .tab-btn.active { background: var(--accent); color: #04240f; }
   .tab-panel { animation: fadeIn .18s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -459,17 +492,17 @@ static const char HTML[] PROGMEM = R"rawhtml(
   .torneo-setup .names { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
   .torneo-setup input[type=text] { width: 100%; padding: 10px 12px; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .88rem; outline: none; }
   .torneo-setup input[type=text]:focus { border-color: var(--accent); }
-  .btn-primary { width: 100%; padding: 13px; background: linear-gradient(90deg,var(--accent),#0097a7); border: none; border-radius: 24px; color: #000; font-weight: 800; font-size: .88rem; letter-spacing: 1px; cursor: pointer; }
+  .btn-primary { width: 100%; padding: 13px; background: var(--accent); border: none; border-radius: 24px; color: #04240f; font-weight: 700; font-size: .88rem; letter-spacing: .5px; cursor: pointer; }
   .btn-secondary { padding: 8px 20px; background: transparent; border: 1.5px solid var(--border); border-radius: 20px; color: var(--muted); font-weight: 700; font-size: .76rem; cursor: pointer; }
-  .btn-ghost-danger { padding: 8px 20px; background: transparent; border: 1.5px solid rgba(244,67,54,.4); border-radius: 20px; color: #f44336; font-weight: 700; font-size: .76rem; cursor: pointer; }
+  .btn-ghost-danger { padding: 8px 20px; background: transparent; border: 1.5px solid rgba(239,68,68,.4); border-radius: 20px; color: #ef4444; font-weight: 700; font-size: .76rem; cursor: pointer; }
   .grupo-titulo { font-size: .68rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--purple); margin: 18px 0 8px; }
   .grupo-titulo:first-child { margin-top: 0; }
   .partidos-lista { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
   .partido-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; font-size: .84rem; }
   .partido-row .vs { color: var(--muted); font-size: .74rem; text-align: center; flex: 1; }
   .partido-row .res { font-weight: 700; color: var(--accent); }
-  .btn-jugar { padding: 6px 16px; background: rgba(0,229,255,.12); border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-weight: 700; font-size: .74rem; cursor: pointer; white-space: nowrap; }
-  .en-juego-banner { background: rgba(255,145,0,.1); border: 1px solid rgba(255,145,0,.35); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; text-align: center; }
+  .btn-jugar { padding: 6px 16px; background: rgba(34,197,94,.12); border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-weight: 700; font-size: .74rem; cursor: pointer; white-space: nowrap; }
+  .en-juego-banner { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; text-align: center; }
   .en-juego-banner b { color: var(--orange); }
   .ronda-titulo { font-size: .68rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 18px 0 8px; }
   .ronda-titulo:first-child { margin-top: 0; }
@@ -482,8 +515,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
 <body>
 <div class="wrap">
 <header>
-  <h1>⚽ Metegol</h1>
-  <p>Sistema de comentarios</p>
+  <h1 id="brand-logo">⚽ Makergol</h1>
+  <p>Creado por <a href="https://instagram.com/brumelab.3d" target="_blank" rel="noopener">Brumelab</a> &amp; <a href="https://instagram.com/deco.lev" target="_blank" rel="noopener">Decolev</a></p>
 </header>
 
 <nav class="tabs">
@@ -494,7 +527,11 @@ static const char HTML[] PROGMEM = R"rawhtml(
 
 <section id="tab-partido" class="tab-panel">
 <div class="partido-panel">
-  <div class="status-bar" id="partido-label">En espera</div>
+  <div class="status-row">
+    <span class="status-dot" id="status-dot"></span>
+    <span class="status-txt" id="partido-label">En espera</span>
+    <span class="modo-chip" id="modo-chip"></span>
+  </div>
   <div class="scoreboard">
     <div class="team c">
       <span class="team-name">Celeste</span>
@@ -507,23 +544,27 @@ static const char HTML[] PROGMEM = R"rawhtml(
     </div>
   </div>
   <div class="partido-meta" id="pmeta">
-    <div class="meta-item">
-      <span class="meta-lbl">Tiempo</span>
-      <span class="meta-val" id="tiempo-juego">00:00</span>
-    </div>
-    <div class="meta-item">
-      <span class="meta-lbl">Estado</span>
-      <span id="estado-badge" class="estado-badge">—</span>
-    </div>
-    <div class="meta-item" id="timer-wrap" style="display:none">
-      <span class="meta-lbl">Restante</span>
-      <span class="meta-val" id="timer">--:--</span>
+    <div class="meta-strip">
+      <div class="meta-item">
+        <span class="meta-lbl">Tiempo</span>
+        <span class="meta-val" id="tiempo-juego">00:00</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-lbl">Estado</span>
+        <span id="estado-badge" class="estado-badge">—</span>
+      </div>
+      <div class="meta-item" id="timer-wrap" style="display:none">
+        <span class="meta-lbl">Restante</span>
+        <span class="meta-val" id="timer">--:--</span>
+      </div>
     </div>
   </div>
   <div class="ganador-banner" id="ganador-wrap"></div>
   <div class="btn-row">
-    <button id="btn-start" class="btn-start" onclick="iniciarPartido()">Iniciar partido</button>
-    <button id="btn-stop"  class="btn-stop"  onclick="pararPartido()">Parar partido</button>
+    <button id="btn-start"   class="btn-start"   onclick="iniciarPartido()">Iniciar partido</button>
+    <button id="btn-pause"   class="btn-pause"   onclick="pausarPartido()">⏸ Pausar</button>
+    <button id="btn-restart" class="btn-restart" onclick="reiniciarPartido()">🔁 Reiniciar</button>
+    <button id="btn-stop"    class="btn-stop"    onclick="pararPartido()">⏹ Terminar partido</button>
   </div>
 </div>
 </section>
@@ -542,7 +583,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <input type="range" id="tGrupos" min="1" max="4" value="1" oninput="sl(this,'tg')">
     </div>
     <div class="names" id="torneo-nombres"></div>
-    <button type="button" class="btn-primary" onclick="crearTorneo()">ARMAR TORNEO</button>
+    <button type="button" class="btn-primary" onclick="crearTorneo()">Armar torneo</button>
   </div>
 </div>
 
@@ -589,87 +630,147 @@ static const char HTML[] PROGMEM = R"rawhtml(
 
 <section id="tab-ajustes" class="tab-panel" style="display:none">
 <form id="cfg" method="POST" action="/save">
-<div class="grid">
+<div class="ajustes-list">
 
-  <div class="card">
-    <h2>🔊 Audio</h2>
-    <p class="sec-lbl" style="color:var(--celeste)">SP1 — Comentarios</p>
-    <div class="field">
-      <label>Volumen <b id="vv">%VOL_VOZ%</b></label>
-      <input type="range" name="volumenVoz" min="0" max="30" value="%VOL_VOZ%" oninput="sl(this,'vv')">
-    </div>
-    <p class="sec-lbl" style="color:var(--muted);margin-top:14px">SP2 — Ambiente</p>
-    <div class="field">
-      <label>Volumen <b id="va">%VOL_AMB%</b></label>
-      <input type="range" name="volumenAmbiente" min="0" max="30" value="%VOL_AMB%" oninput="sl(this,'va')">
-    </div>
-  </div>
-
-  <div class="card cg">
-    <h2>🎮 Modalidad</h2>
-    <div class="field">
-      <label>Modo de juego</label>
-      <div class="toggle-row">
-        <button type="button" class="toggle-btn %MODO_GOLES_ACTIVE%" onclick="setModo(0)">Por goles</button>
-        <button type="button" class="toggle-btn %MODO_TIEMPO_ACTIVE%" onclick="setModo(1)">Por tiempo</button>
+  <div class="acc" data-acc="audio">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">🔊</span>
+      <span class="acc-txt"><span class="acc-title">Audio</span><span class="acc-sub">Volumen del comentarista y el ambiente</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
+      <p class="sec-lbl" style="color:var(--celeste);padding-top:2px">Comentarista</p>
+      <div class="field">
+        <label>Volumen <b id="vv">%VOL_VOZ%</b></label>
+        <input type="range" name="volumenVoz" min="0" max="30" value="%VOL_VOZ%" oninput="sl(this,'vv')">
       </div>
-      <input type="hidden" name="modoJuego" id="modoJuego" value="%MODO%">
-    </div>
-    <div class="field" id="row-goles">
-      <label>Goles para ganar <b id="gm">%GOLES_MAX%</b></label>
-      <input type="range" name="golesMax" min="4" max="10" value="%GOLES_MAX%" oninput="sl(this,'gm')">
-    </div>
-    <div class="field" id="row-tiempo">
-      <label>Duración (min) <b id="dm">%DUR_MIN%</b></label>
-      <input type="range" name="duracionMin" min="3" max="8" value="%DUR_MIN%" oninput="sl(this,'dm')">
-    </div>
-    <div class="field">
-      <label>Cambio display seg <b id="id">%INTERV_DISP%</b></label>
-      <input type="range" name="intervaloDisplay" min="2" max="30" value="%INTERV_DISP%" oninput="sl(this,'id')">
+      <p class="sec-lbl" style="color:var(--muted);margin-top:14px">Ambiente y público</p>
+      <div class="field">
+        <label>Volumen <b id="va">%VOL_AMB%</b></label>
+        <input type="range" name="volumenAmbiente" min="0" max="30" value="%VOL_AMB%" oninput="sl(this,'va')">
+      </div>
     </div>
   </div>
 
-  <div class="card" style="grid-column:1/-1">
-    <h2>🖥️ Textos de la farola</h2>
-    <div class="rng-grid">
-      <div>
-        <div class="field"><label>Al bootear el ESP32</label><input class="ti" type="text" name="txtBoot" maxlength="18" value="%TXT_BOOT%"></div>
+  <div class="acc" data-acc="reglas">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">🥅</span>
+      <span class="acc-txt"><span class="acc-title">Reglas del partido</span><span class="acc-sub">Modo de juego, goles o minutos</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
+      <div class="field">
+        <label>Modo de juego</label>
+        <div class="toggle-row">
+          <button type="button" class="toggle-btn %MODO_GOLES_ACTIVE%" onclick="setModo(0)">Por goles</button>
+          <button type="button" class="toggle-btn %MODO_TIEMPO_ACTIVE%" onclick="setModo(1)">Por tiempo</button>
+        </div>
+        <input type="hidden" name="modoJuego" id="modoJuego" value="%MODO%">
+      </div>
+      <div class="field" id="row-goles">
+        <label>Goles para ganar <b id="gm">%GOLES_MAX%</b></label>
+        <input type="range" name="golesMax" min="4" max="10" value="%GOLES_MAX%" oninput="sl(this,'gm')">
+      </div>
+      <div class="field" id="row-tiempo">
+        <label>Duración (min) <b id="dm">%DUR_MIN%</b></label>
+        <input type="range" name="duracionMin" min="3" max="8" value="%DUR_MIN%" oninput="sl(this,'dm')">
+      </div>
+      <div class="field">
+        <label>Alternar marcador/tiempo cada <b id="id">%INTERV_DISP%</b>s</label>
+        <input type="range" name="intervaloDisplay" min="2" max="30" value="%INTERV_DISP%" oninput="sl(this,'id')">
+      </div>
+    </div>
+  </div>
+
+  <div class="acc" data-acc="farola">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">🖥️</span>
+      <span class="acc-txt"><span class="acc-title">Pantalla LED</span><span class="acc-sub">Brillo y los mensajes que muestra el visor</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
+      <div class="field">
+        <label>Brillo <b id="brb">%BRILLO%</b></label>
+        <input type="range" name="brillo" min="0" max="15" value="%BRILLO%" oninput="sl(this,'brb')">
+      </div>
+      <div class="toggle-row" style="margin:16px 0 12px">
+        <button type="button" class="toggle-btn active" onclick="farolaGrupo(this,'fg-partido')">Durante</button>
+        <button type="button" class="toggle-btn" onclick="farolaGrupo(this,'fg-fin')">Fin</button>
+        <button type="button" class="toggle-btn" onclick="farolaGrupo(this,'fg-otros')">Otros</button>
+      </div>
+      <div id="fg-partido" class="farola-grupo">
         <div class="field"><label>Al iniciar partido</label><input class="ti" type="text" name="txtArr" maxlength="18" value="%TXT_ARR%"></div>
         <div class="field"><label>Al pausar</label><input class="ti" type="text" name="txtPau" maxlength="18" value="%TXT_PAU%"></div>
         <div class="field"><label>Al reanudar</label><input class="ti" type="text" name="txtRea" maxlength="18" value="%TXT_REA%"></div>
-      </div>
-      <div>
-        <div class="field"><label>Al cancelar</label><input class="ti" type="text" name="txtCan" maxlength="18" value="%TXT_CAN%"></div>
         <div class="field"><label>En cada gol</label><input class="ti" type="text" name="txtGol" maxlength="18" value="%TXT_GOL%"></div>
-        <div class="field"><label>Fin — ganó celeste</label><input class="ti" type="text" name="txtGC" maxlength="26" value="%TXT_GC%"></div>
-        <div class="field"><label>Fin — ganó blanco</label><input class="ti" type="text" name="txtGB" maxlength="26" value="%TXT_GB%"></div>
-        <div class="field"><label>Fin — empate</label><input class="ti" type="text" name="txtEmp" maxlength="26" value="%TXT_EMP%"></div>
+        <div class="field"><label>Al cancelar</label><input class="ti" type="text" name="txtCan" maxlength="18" value="%TXT_CAN%"></div>
+      </div>
+      <div id="fg-fin" class="farola-grupo" style="display:none">
+        <div class="field"><label>Ganó celeste</label><input class="ti" type="text" name="txtGC" maxlength="26" value="%TXT_GC%"></div>
+        <div class="field"><label>Ganó blanco</label><input class="ti" type="text" name="txtGB" maxlength="26" value="%TXT_GB%"></div>
+        <div class="field"><label>Empate</label><input class="ti" type="text" name="txtEmp" maxlength="26" value="%TXT_EMP%"></div>
+      </div>
+      <div id="fg-otros" class="farola-grupo" style="display:none">
+        <div class="field"><label>Al bootear el ESP32</label><input class="ti" type="text" name="txtBoot" maxlength="18" value="%TXT_BOOT%"></div>
         <div class="field"><label>Anuncio próximo torneo (prefijo)</label><input class="ti" type="text" name="txtPrep" maxlength="18" value="%TXT_PREP%"></div>
         <div class="field"><label>Después del ganador (sin torneo)</label><input class="ti" type="text" name="txtJDN" maxlength="30" value="%TXT_JDN%"></div>
-        <div class="field"><label>Mensaje en reposo</label><input class="ti" type="text" name="txtReposo" maxlength="30" value="%TXT_REPOSO%"></div>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>😴 Reposo</h2>
-    <div class="field">
-      <label>Timeout reposo seg <b id="sty">%STBY_TO%</b></label>
-      <input type="range" name="standbyTimeoutSegs" min="60" max="1800" step="30" value="%STBY_TO%" oninput="sl(this,'sty')">
-      <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Segundos sin actividad (sin partido en curso) antes de entrar en reposo.</p>
-    </div>
-    <div class="field">
-      <label>Intervalo scroll en reposo seg <b id="sti">%STBY_INTERV%</b></label>
-      <input type="range" name="reposoIntervaloSegs" min="60" max="300" value="%STBY_INTERV%" oninput="sl(this,'sti')">
-    </div>
-    <div class="field">
-      <label>Brillo en reposo <b id="stb">%STBY_BRILLO%</b></label>
-      <input type="range" name="reposoBrillo" min="0" max="15" value="%STBY_BRILLO%" oninput="sl(this,'stb')">
+  <div class="acc" data-acc="reposo">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">😴</span>
+      <span class="acc-txt"><span class="acc-title">Reposo</span><span class="acc-sub">Apaga pantalla LED y wifi cuando no se juega</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
+      <div class="field">
+        <label>Timeout reposo seg <b id="sty">%STBY_TO%</b></label>
+        <input type="range" name="standbyTimeoutSegs" min="60" max="1800" step="30" value="%STBY_TO%" oninput="sl(this,'sty')">
+        <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Segundos sin actividad (sin partido en curso) antes de apagar la pantalla LED y wifi. Un click del encoder en la mesa lo despierta.</p>
+      </div>
     </div>
   </div>
 
-  <div class="card cc">
-    <h2>🎙 Comentarista</h2>
+  <div class="acc" data-acc="wifi">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">📶</span>
+      <span class="acc-txt"><span class="acc-title">Red</span><span class="acc-sub">Conectar el dispositivo a wifi</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body" id="wifi-card">
+      <div id="wifi-conn-status" style="display:none;background:rgba(105,240,174,.06);border:1px solid rgba(105,240,174,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center">
+        <p style="font-size:.82rem;color:var(--muted)">Conectado a <b id="ssid-label" style="color:var(--green)"></b></p>
+        <a href="http://makergol.local" target="_blank" style="font-size:.78rem;color:var(--accent)">🌐 makergol.local</a>
+      </div>
+      <div id="saved-nets" style="margin-bottom:14px"></div>
+      <p class="sec-lbl" style="color:var(--green)">Agregar red WiFi</p>
+      <div class="field">
+        <label>SSID</label>
+        <input type="text" id="wSSID" placeholder="Nombre de la red" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="wPass" placeholder="••••••" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
+      </div>
+      <button type="button" onclick="agregarRed()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:10px;color:#04240f;font-weight:700;font-size:.88rem;cursor:pointer">Guardar red</button>
+      <div id="wifi-msg" style="font-size:.78rem;color:var(--muted);margin-top:10px;text-align:center;min-height:18px"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="avanzado-wrap" class="ajustes-list" style="display:none;margin-top:14px">
+  <p class="grupo-titulo">🔧 Técnico (interno — no tocar en la mesa)</p>
+
+  <div class="acc" data-acc="comentarista">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">🎙</span>
+      <span class="acc-txt"><span class="acc-title">Comentarista</span><span class="acc-sub">Timing de los comentarios y umbrales de "caliente"/"goleada"</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
     <div class="field">
       <label>Intervalo mín. seg <b id="icn">%INTERV_COM_MIN%</b></label>
       <input type="range" name="intervaloComentariosMin" min="5" max="120" value="%INTERV_COM_MIN%" oninput="sl(this,'icn')">
@@ -702,10 +803,19 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <label>Último tramo seg (tiempo) <b id="uts">%ULTI_TRAMO%</b></label>
       <input type="range" name="ultimoTramoSegs" min="10" max="120" value="%ULTI_TRAMO%" oninput="sl(this,'uts')">
     </div>
+    </div>
   </div>
 
-  <div class="card cr" style="grid-column:1/-1">
-    <h2>🎵 Rangos de audio — pistas MP3</h2>
+  <div class="acc" data-acc="rangos">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">🎵</span>
+      <span class="acc-txt"><span class="acc-title">Rangos de audio</span><span class="acc-sub">Qué pistas MP3 suenan en cada situación</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
+    <p style="font-size:.74rem;color:var(--muted);line-height:1.5;margin-bottom:14px">
+      Cada frase grabada es una pista numerada en la SD (1, 2, 3…). Acá definís, para cada situación, entre qué número y qué número elegir — el sistema sortea una pista al azar dentro de ese rango.
+    </p>
     <div class="rng-grid">
       <div>
         <p class="sec-lbl" style="color:var(--accent);padding-top:0">Comentarios</p>
@@ -743,10 +853,16 @@ static const char HTML[] PROGMEM = R"rawhtml(
         </table>
       </div>
     </div>
+    </div>
   </div>
 
-  <div class="card cr" style="grid-column:1/-1">
-    <h2>🔔 Pitidos &amp; Finales &amp; SP2</h2>
+  <div class="acc" data-acc="pitidos">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">🔔</span>
+      <span class="acc-txt"><span class="acc-title">Pitidos, finales y ambiente</span><span class="acc-sub">Silbatos, cierre del partido y el segundo parlante (SP2)</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
     <div class="rng-grid">
       <div>
         <p class="sec-lbl" style="color:var(--accent);padding-top:0">Pitidos</p>
@@ -769,77 +885,40 @@ static const char HTML[] PROGMEM = R"rawhtml(
         </table>
       </div>
       <div>
-        <p class="sec-lbl" style="color:#4caf50;padding-top:0">SP2 — Ambiente (pistas 1–17)</p>
-        <p style="font-size:.72rem;color:var(--muted);margin-bottom:10px;line-height:1.5">
-          Ambiente genérico suena la mayor parte del partido.<br>
-          Hinchada suena <b style="color:var(--text)">1 sola vez</b> por partido (tras el gol #<b id="hg" style="color:var(--text)">%HINCH_GOL%</b>).<br>
-          Caliente suena <b style="color:var(--text)">máx. 2 veces</b>, solo si el partido está caliente.<br>
-          Reacción gol suena instantáneo en cada gol.
-        </p>
+        <p class="sec-lbl" style="color:var(--green);padding-top:0">SP2 — Ambiente</p>
         <div class="field">
-          <label>Hinchada después del gol # <b id="hgb">%HINCH_GOL%</b></label>
-          <input type="range" name="hincGol" min="1" max="10" value="%HINCH_GOL%" oninput="sl(this,'hgb');document.getElementById('hg').textContent=this.value">
-        </div>
-        <div class="field">
-          <label>Timeout reacción gol seg <b id="grt">%GOL_REACC_TO%</b></label>
-          <input type="range" name="golReaccionTimeoutSegs" min="1" max="60" value="%GOL_REACC_TO%" oninput="sl(this,'grt')">
-          <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Si el DFPlayer no avisa que terminó la reacción de gol, se fuerza la salida después de este tiempo (subilo si se corta el audio antes de tiempo; bajalo si sentís silencio de más).</p>
-        </div>
-        <div class="field">
-          <label>Timeout hinchada seg <b id="hct">%HINCH_TO%</b></label>
-          <input type="range" name="hinchadaTimeoutSegs" min="5" max="60" value="%HINCH_TO%" oninput="sl(this,'hct')">
-          <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Igual que el de arriba, pero para la hinchada — dura más, por eso el número por defecto es más alto.</p>
-        </div>
-        <div class="field">
-          <label>Ajuste volumen ambiente genérico <b id="agb">%AMB_GEN_BOOST%</b></label>
-          <input type="range" name="ambienteGenericoBoost" min="-10" max="10" value="%AMB_GEN_BOOST%" oninput="sl(this,'agb')">
-          <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Si el ambiente genérico suena más flojo que la reacción de gol/hinchada, subilo acá para compensar (no toca el volumen general).</p>
+          <label>Hinchada después del gol # <span class="info-ico" tabindex="0" data-tip="Suena 1 sola vez por partido, justo después de ese gol.">ⓘ</span> <b id="hgb">%HINCH_GOL%</b></label>
+          <input type="range" name="hincGol" min="1" max="10" value="%HINCH_GOL%" oninput="sl(this,'hgb')">
         </div>
         <table class="rt">
           <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th></tr></thead>
           <tbody>
-            <tr><td><span class="rl">genérico (normal)</span></td><td><input class="ni" type="number" name="aGeD" min="1" max="255" value="%A_GE_D%"></td><td><input class="ni" type="number" name="aGeH" min="1" max="255" value="%A_GE_H%"></td></tr>
-            <tr><td><span class="rl">hinchada (1x)</span></td><td><input class="ni" type="number" name="hMuD" min="1" max="255" value="%H_MU_D%"></td><td><input class="ni" type="number" name="hMuH" min="1" max="255" value="%H_MU_H%"></td></tr>
-            <tr><td><span class="rl">caliente (máx 2x)</span></td><td><input class="ni" type="number" name="mCaD" min="1" max="255" value="%M_CA_D%"></td><td><input class="ni" type="number" name="mCaH" min="1" max="255" value="%M_CA_H%"></td></tr>
-            <tr><td><span class="rl">reacción gol</span></td><td><input class="ni" type="number" name="aGoD" min="1" max="255" value="%A_GO_D%"></td><td><input class="ni" type="number" name="aGoH" min="1" max="255" value="%A_GO_H%"></td></tr>
+            <tr><td><span class="rl">hinchada <span class="info-ico" tabindex="0" data-tip="Máx. 2 veces, tras el gol elegido arriba.">ⓘ</span></span></td><td><input class="ni" type="number" name="hMuD" min="1" max="255" value="%H_MU_D%"></td><td><input class="ni" type="number" name="hMuH" min="1" max="255" value="%H_MU_H%"></td></tr>
+            <tr><td><span class="rl">caliente <span class="info-ico" tabindex="0" data-tip="Máx. 2 veces, solo si el partido está que arde.">ⓘ</span></span></td><td><input class="ni" type="number" name="mCaD" min="1" max="255" value="%M_CA_D%"></td><td><input class="ni" type="number" name="mCaH" min="1" max="255" value="%M_CA_H%"></td></tr>
+            <tr><td><span class="rl">reacción gol <span class="info-ico" tabindex="0" data-tip="Instantáneo en cada gol.">ⓘ</span></span></td><td><input class="ni" type="number" name="aGoD" min="1" max="255" value="%A_GO_D%"></td><td><input class="ni" type="number" name="aGoH" min="1" max="255" value="%A_GO_H%"></td></tr>
           </tbody>
         </table>
       </div>
     </div>
+    </div>
   </div>
 
 </div>
+
+  <div style="text-align:center;padding:18px 0 4px">
+    <button type="button" class="btn-tecnico" id="avanzado-link" onclick="toggleAvanzado()">⚙ Configuración técnica</button>
+  </div>
+
 <div class="save-bar">
-  <button type="submit" class="btn-save">GUARDAR CONFIGURACIÓN</button>
+  <button type="submit" class="btn-save">Guardar configuración</button>
 </div>
 </form>
-<button id="fab-save" onclick="document.getElementById('cfg').requestSubmit()">💾 GUARDAR</button>
-
-<div class="grid" style="margin-top:14px">
-  <div class="card cw" id="wifi-card">
-    <h2>📶 WiFi</h2>
-    <div id="wifi-conn-status" style="display:none;background:rgba(105,240,174,.06);border:1px solid rgba(105,240,174,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center">
-      <p style="font-size:.82rem;color:var(--muted)">Conectado a <b id="ssid-label" style="color:var(--green)"></b></p>
-      <a href="http://metegol.local" target="_blank" style="font-size:.78rem;color:var(--accent)">🌐 metegol.local</a>
-    </div>
-    <div id="saved-nets" style="margin-bottom:14px"></div>
-    <p class="sec-lbl" style="color:var(--green)">Agregar red WiFi</p>
-    <div class="field">
-      <label>SSID</label>
-      <input type="text" id="wSSID" placeholder="Nombre de la red" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
-    </div>
-    <div class="field">
-      <label>Contraseña</label>
-      <input type="password" id="wPass" placeholder="••••••" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
-    </div>
-    <button type="button" onclick="agregarRed()" style="width:100%;padding:11px;background:linear-gradient(90deg,var(--purple),#651fff);border:none;border-radius:10px;color:#fff;font-weight:700;font-size:.88rem;cursor:pointer">GUARDAR RED</button>
-    <div id="wifi-msg" style="font-size:.78rem;color:var(--muted);margin-top:10px;text-align:center;min-height:18px"></div>
-  </div>
-</div>
+<button id="fab-save" onclick="document.getElementById('cfg').requestSubmit()">✓ Guardar</button>
 </section>
 </div>
 
 <div id="toast">✓ Guardado</div>
+<button id="fab-play" onclick="quickPlay()">▶ Jugar</button>
 
 <script>
   function sl(el,id){
@@ -907,29 +986,55 @@ static const char HTML[] PROGMEM = R"rawhtml(
     en_espera:'En espera',terminado:'Finalizado',pausado:'Pausado ⏸'
   };
   const ECC={
-    parejo:'#7c4dff',caliente:'#ff9100',goleada:'#f44336',
-    ultimo_tramo:'#ff4081',aburrido:'#607d8b',tranquilo:'#546e7a',
-    definido:'#0097a7',inicio:'#00e5ff',primeros_min:'#00b8d4'
+    parejo:'#64748b',caliente:'#f59e0b',goleada:'#ef4444',
+    ultimo_tramo:'#fb7185',aburrido:'#71717a',tranquilo:'#52525b',
+    definido:'#0ea5e9',inicio:'#22c55e',primeros_min:'#38bdf8'
   };
+  let _fabAccion='iniciar';
+  function actualizarFabPlay(d){
+    const fp=document.getElementById('fab-play');
+    if(d.activo){ fp.textContent='⏸ Pausar'; _fabAccion='pausar'; }
+    else if(d.pausado){ fp.textContent='▶ Reanudar'; _fabAccion='reanudar'; }
+    else { fp.textContent='▶ Jugar'; _fabAccion='iniciar'; }
+  }
+  function actualizarModoChip(modo){
+    const chip=document.getElementById('modo-chip');
+    if(modo===1){
+      const dm=document.querySelector('input[name=duracionMin]');
+      chip.textContent='⏱ Por tiempo · '+(dm?dm.value:'?')+' min';
+    }else{
+      const gm=document.querySelector('input[name=golesMax]');
+      chip.textContent='🥅 Por goles · '+(gm?gm.value:'?');
+    }
+  }
   function actualizarMarcador(){
     fetch('/estado').then(r=>r.json()).then(d=>{
       window._partidoTerminado = !!d.terminado;
       const g=d.goles||[0,0];
       const lbl=document.getElementById('partido-label');
+      const dot=document.getElementById('status-dot');
       const pm=document.getElementById('pmeta');
       const gw=document.getElementById('ganador-wrap');
       const bs=document.getElementById('btn-start');
+      const bp=document.getElementById('btn-pause');
+      const brs=document.getElementById('btn-restart');
       const bst=document.getElementById('btn-stop');
       document.getElementById('sc-c').textContent=g[0];
       document.getElementById('sc-b').textContent=g[1];
+      actualizarFabPlay(d);
+      actualizarModoChip(d.modo);
       if(d.reposo){
-        lbl.textContent='😴 En reposo';
+        dot.className='status-dot';
+        lbl.textContent='En reposo';
         pm.style.display='none';gw.style.display='none';
-        bs.textContent='Iniciar partido';bst.style.display='none';
+        bs.style.display='inline-block';bs.textContent='Iniciar partido';
+        bp.style.display='none';brs.style.display='none';bst.style.display='none';
       }else if(d.activo){
+        dot.className='status-dot on';
         lbl.textContent='Partido en curso';
         pm.style.display='flex';gw.style.display='none';
-        bs.textContent='Reiniciar';bst.style.display='inline-block';
+        bs.style.display='none';
+        bp.style.display='inline-block';brs.style.display='inline-block';bst.style.display='inline-block';
         document.getElementById('tiempo-juego').textContent=d.tiempoJuego||'00:00';
         const badge=document.getElementById('estado-badge');
         badge.textContent=EC[d.estado]||d.estado;
@@ -941,19 +1046,25 @@ static const char HTML[] PROGMEM = R"rawhtml(
           document.getElementById('timer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
         }else{tw.style.display='none';}
       }else if(d.pausado){
-        lbl.textContent='Partido pausado ⏸';
+        dot.className='status-dot pausado';
+        lbl.textContent='Pausado';
         pm.style.display='none';gw.style.display='none';
-        bs.textContent='Reanudar';bst.style.display='inline-block';
+        bs.style.display='inline-block';bs.textContent='Reanudar';
+        bp.style.display='none';brs.style.display='inline-block';bst.style.display='inline-block';
       }else if(d.terminado){
-        lbl.textContent='Partido finalizado';
+        dot.className='status-dot';
+        lbl.textContent='Finalizado';
         pm.style.display='none';
         gw.style.display='block';
-        gw.textContent=g[0]>g[1]?'🏆 Ganó Celeste!':g[1]>g[0]?'🏆 Ganó Blanco!':'🤝 Empate!';
-        bs.textContent='Nuevo partido';bst.style.display='none';
+        gw.textContent=g[0]>g[1]?'Ganó Celeste':g[1]>g[0]?'Ganó Blanco':'Empate';
+        bs.style.display='inline-block';bs.textContent='Nuevo partido';
+        bp.style.display='none';brs.style.display='none';bst.style.display='none';
       }else{
+        dot.className='status-dot';
         lbl.textContent='En espera';
         pm.style.display='none';gw.style.display='none';
-        bs.textContent='Iniciar partido';bst.style.display='none';
+        bs.style.display='inline-block';bs.textContent='Iniciar partido';
+        bp.style.display='none';brs.style.display='none';bst.style.display='none';
         document.getElementById('sc-c').textContent='0';
         document.getElementById('sc-b').textContent='0';
       }
@@ -965,7 +1076,18 @@ static const char HTML[] PROGMEM = R"rawhtml(
       else setTimeout(iniciarPartido,1000);  // cierre del partido anterior todavía pendiente — reintenta
     }).catch(()=>{});
   }
-  function pararPartido(){fetch('/stop',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});}
+  function reiniciarPartido(){
+    if(!confirm('¿Reiniciar el marcador a 0-0?'))return;
+    fetch('/start',{method:'POST',body:new URLSearchParams({nuevo:'1'})}).then(r=>r.json()).then(j=>{
+      if(j.ok) actualizarMarcador();
+      else setTimeout(reiniciarPartido,1000);
+    }).catch(()=>{});
+  }
+  function pausarPartido(){fetch('/pause',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});}
+  function pararPartido(){
+    if(!confirm('¿Terminar el partido con el marcador actual?'))return;
+    fetch('/stop',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});
+  }
   actualizarMarcador();setInterval(actualizarMarcador,3000);
   document.getElementById('cfg').addEventListener('submit',function(e){
     e.preventDefault();
@@ -979,8 +1101,38 @@ static const char HTML[] PROGMEM = R"rawhtml(
       document.getElementById('tab-'+t).style.display = t===name ? '' : 'none';
       document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
     });
+    document.getElementById('fab-play').style.display = name==='partido' ? 'none' : 'flex';
     if(name==='torneo') actualizarTorneo();
   }
+  function quickPlay(){
+    if(_fabAccion==='pausar'){ pausarPartido(); return; }
+    showTab('partido');
+    iniciarPartido();
+  }
+
+  function toggleAcc(btn){
+    btn.closest('.acc').classList.toggle('open');
+  }
+  function farolaGrupo(btn,id){
+    btn.parentElement.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    btn.closest('.acc-body').querySelectorAll('.farola-grupo').forEach(g=>g.style.display='none');
+    document.getElementById(id).style.display='';
+  }
+
+  function toggleAvanzado(){
+    const w=document.getElementById('avanzado-wrap');
+    const abierto=w.style.display==='flex';
+    w.style.display=abierto?'none':'flex';
+    document.getElementById('avanzado-link').textContent=abierto?'⚙ Configuración técnica':'⚙ Ocultar configuración técnica';
+    try{localStorage.setItem('mkg_adv',abierto?'0':'1');}catch(e){}
+  }
+  try{
+    if(localStorage.getItem('mkg_adv')==='1'){
+      document.getElementById('avanzado-wrap').style.display='flex';
+      document.getElementById('avanzado-link').textContent='⚙ Ocultar configuración técnica';
+    }
+  }catch(e){}
 
   function torneoRenderNombres(n){
     const wrap=document.getElementById('torneo-nombres');
@@ -1157,9 +1309,6 @@ static String buildPage() {
     html.replace("%ULTI_TRAMO%",     String(config.ultimoTramoSegs));
 
     html.replace("%UMBRAL_ABUR%",    String(config.umbralAburridoSegs));
-    html.replace("%GOL_REACC_TO%",   String(config.golReaccionTimeoutSegs));
-    html.replace("%HINCH_TO%",       String(config.hinchadaTimeoutSegs));
-    html.replace("%AMB_GEN_BOOST%",  String(config.ambienteGenericoBoost));
     // Comentarista — rangos estado
     html.replace("%C_IN_D%", String(config.comentInicio.desde));
     html.replace("%C_IN_H%", String(config.comentInicio.hasta));
@@ -1238,7 +1387,12 @@ static void handleSave() {
     if (server.hasArg("modoJuego"))       config.modoJuego       = server.arg("modoJuego").toInt();
     if (server.hasArg("golesMax"))        config.golesMax        = constrain(server.arg("golesMax").toInt(), 4, 10);
     if (server.hasArg("duracionMin"))     config.duracionMin     = constrain(server.arg("duracionMin").toInt(), 3, 8);
-    if (server.hasArg("brillo"))           config.brillo           = server.arg("brillo").toInt();
+    if (server.hasArg("brillo")) {
+        config.brillo = constrain(server.arg("brillo").toInt(), 0, 15);
+        // En reposo el brillo lo maneja Reposo (queda atenuado) — este valor se
+        // aplica solo, sin pisarlo, al salir de reposo (ver Reposo.cpp: salir()).
+        if (!reposoActivo()) displaySetBrillo(config.brillo);
+    }
     if (server.hasArg("velocidadScroll"))  config.velocidadScroll  = server.arg("velocidadScroll").toInt();
     if (server.hasArg("intervaloDisplay")) config.intervaloDisplay = constrain(server.arg("intervaloDisplay").toInt(), 2, 30);
     if (server.hasArg("pistaAmbiente"))    config.pistaAmbiente    = server.arg("pistaAmbiente").toInt();
@@ -1270,9 +1424,6 @@ static void handleSave() {
     if (server.hasArg("primerosMinsSegs"))     config.primerosMinsSegs     = constrain(server.arg("primerosMinsSegs").toInt(), 10, 30);
     if (server.hasArg("ultimoTramoSegs"))      config.ultimoTramoSegs      = server.arg("ultimoTramoSegs").toInt();
     if (server.hasArg("umbralAburridoSegs"))   config.umbralAburridoSegs   = server.arg("umbralAburridoSegs").toInt();
-    if (server.hasArg("golReaccionTimeoutSegs")) config.golReaccionTimeoutSegs = constrain(server.arg("golReaccionTimeoutSegs").toInt(), 1, 60);
-    if (server.hasArg("hinchadaTimeoutSegs"))    config.hinchadaTimeoutSegs    = constrain(server.arg("hinchadaTimeoutSegs").toInt(), 5, 60);
-    if (server.hasArg("ambienteGenericoBoost"))  config.ambienteGenericoBoost  = (int8_t)constrain(server.arg("ambienteGenericoBoost").toInt(), -10, 10);
     // Comentarista — rangos estado
     if (server.hasArg("cInD")) config.comentInicio.desde          = server.arg("cInD").toInt();
     if (server.hasArg("cInH")) config.comentInicio.hasta          = server.arg("cInH").toInt();
@@ -1386,11 +1537,15 @@ static void handleStart() {
         server.send(409, "application/json", "{\"ok\":false,\"error\":\"cierre_pendiente\"}");
         return;
     }
+    // "nuevo=1" fuerza un partido nuevo (0-0) aunque haya uno pausado — lo usa
+    // el botón "Reiniciar" del panel para saltear el camino de "reanudar".
+    bool nuevo = server.hasArg("nuevo") && server.arg("nuevo") == "1";
     if (_partido) {
-        if (_partido->pausado) {
+        if (_partido->pausado && !nuevo) {
             _partido->activo  = true;
             _partido->pausado = false;
             resetearDeteccionGoles();
+            displayTexto(config.textoReanuda, config.velocidadScroll);
             displayMarcador(_partido->goles[0], _partido->goles[1]);
             Serial.println("\n[JUEGO] Partido reanudado (web)");
         } else {
@@ -1400,9 +1555,11 @@ static void handleStart() {
             _partido->resetear();
             _partido->activo    = true;
             _partido->terminado = false;
+            _partido->pausado   = false;
             resetearDeteccionGoles();
+            displayTexto(config.textoArranca, config.velocidadScroll);
             displayMarcador(0, 0);
-            Serial.println("\n[JUEGO] ¡Partido iniciado!");
+            Serial.println("\n[JUEGO] ¡Partido iniciado! (web)");
         }
     } else {
         // SP2 arranca solo via ambienteActualizar() en el loop
@@ -1410,13 +1567,23 @@ static void handleStart() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
-static void handleStop() {
-    if (_partido) {
-        _partido->activo    = false;
-        _partido->pausado   = false;
-        _partido->terminado = true;
-        Serial.println("\n[JUEGO] Partido detenido manualmente.");
+static void handlePause() {
+    reposoNotificarActividad();
+    if (_partido && _partido->activo) {
+        _partido->activo  = false;
+        _partido->pausado = true;
+        displayTexto(config.textoPausa, config.velocidadScroll);
+        Serial.println("\n[JUEGO] Partido pausado (web)");
     }
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleStop() {
+    reposoNotificarActividad();
+    // Termina el partido ya mismo con el marcador actual — mismo cierre que un
+    // fin de partido natural (pitido, comentario y ganador en la farola), así
+    // el botón "Terminar partido" del panel se ve reflejado en la mesa.
+    finalizarPartidoManual();
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -1547,7 +1714,7 @@ void webConfigInit(Partido* p) {
     WiFi.softAP(WIFI_SSID, WIFI_PASS);
     IPAddress apIp = WiFi.softAPIP();
 
-    MDNS.begin("metegol");
+    MDNS.begin("makergol");
     MDNS.addService("http", "tcp", 80);
 
     WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -1581,6 +1748,7 @@ void webConfigInit(Partido* p) {
     server.on("/save", HTTP_POST, handleSave);
     server.on("/estado", HTTP_GET, handleEstado);
     server.on("/start",  HTTP_POST, handleStart);
+    server.on("/pause",  HTTP_POST, handlePause);
     server.on("/stop",   HTTP_POST, handleStop);
     server.on("/configBrume", HTTP_GET, handleConfigBrumeGet);
 
@@ -1688,6 +1856,11 @@ void webConfigInit(Partido* p) {
 }
 
 void webConfigLoop() {
+    // En reposo la radio WiFi está apagada (webConfigApagarWifi) — el socket UDP
+    // de dns y el servidor ya no existen, seguir llamándolos acá solo tira errores
+    // ("could not receive data") a los gritos en el log, en cada vuelta del loop.
+    if (_wifiApagada) return;
+
     dns.processNextRequest();
     server.handleClient();
 
@@ -1712,7 +1885,7 @@ void webConfigLoop() {
                 _staGaveUp = true;
                 WiFi.disconnect(true);
                 Serial.println("\n[WiFi] Ninguna red disponible — solo AP");
-                Serial.println("[WiFi] Acceso: http://192.168.4.1/  o  http://metegol.local/");
+                Serial.println("[WiFi] Acceso: http://192.168.4.1/  o  http://makergol.local/");
             }
         }
     }
@@ -1724,4 +1897,43 @@ void webConfigLoop() {
         Serial.println("\n[WiFi] STA desconectado — reintentando redes...");
         if (_nNets > 0) WiFi.begin(_staSSID[0], _staPass[0]);
     }
+}
+
+// Reposo real: apaga la radio WiFi (AP + STA) para bajar consumo de verdad.
+// _staGaveUp = true acá es clave — si no, el watchdog de reconexión de
+// webConfigLoop() (arriba) la vuelve a prender solo en el siguiente ciclo.
+void webConfigApagarWifi() {
+    dns.stop();
+    MDNS.end();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    _staAnunciado = false;
+    _staGaveUp    = true;
+    _wifiApagada  = true;
+    Serial.println("\n[REPOSO] WiFi apagado");
+}
+
+// Sale de reposo: reactiva AP + STA, mDNS y el servidor — mismo camino que webConfigInit().
+void webConfigReactivarWifi() {
+    _wifiApagada = false;
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.setSleep(false);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    WiFi.softAP(WIFI_SSID, WIFI_PASS);
+    IPAddress apIp = WiFi.softAPIP();
+
+    MDNS.begin("makergol");
+    MDNS.addService("http", "tcp", 80);
+    dns.start(53, "*", apIp);
+    server.begin();
+
+    if (_nNets > 0) {
+        _staGaveUp  = false;
+        _tryNetIdx  = 0;
+        _staStartMs = millis();
+        WiFi.begin(_staSSID[0], _staPass[0]);
+    } else {
+        _staGaveUp = true;
+    }
+    Serial.println("\n[REPOSO] WiFi reactivado");
 }

@@ -43,8 +43,10 @@ static int      btnPending    = 0;
 
 Partido partido;
 
-// Display tiempo scrolleante en modo tiempo
-static uint32_t _altUltimoCambio = 0;
+// Display en modo tiempo: alterna marcador ↔ tiempo restante, ambos quietos
+// (no scrolleando) cada uno su ratito, cada intervaloDisplay segundos.
+static uint32_t _altUltimoCambio   = 0;
+static bool     _altMuestraTiempo  = false;
 
 // Sensores de gol — file-scope para poder resetear al iniciar partido
 static bool          _prevSensor1  = HIGH;
@@ -101,11 +103,34 @@ bool finDePartidoPendiente() {
 void resetearDeteccionGoles() {
     _prevSensor1     = digitalRead(PIN_SENSOR_CELESTE);
     _prevSensor2     = digitalRead(PIN_SENSOR_BLANCO);
-    _ultimoGol1      = millis();
-    _ultimoGol2      = millis();
+    // El bloqueo de 5s entre goles del mismo arco no tiene sentido al arrancar/
+    // reanudar — acá alcanza con ~1s para no confundir el rebote del botón o el
+    // ruido del propio arranque con un gol real. Restar 4000 en vez de dejarlo en
+    // millis() logra eso sin agregar una ventana de bloqueo aparte (millis() - _ultimoGolX
+    // sigue dando el delta correcto aunque esto envuelva cerca del boot, por ser aritmética
+    // unsigned).
+    _ultimoGol1      = millis() - 4000;
+    _ultimoGol2      = millis() - 4000;
     _sensor1LowAt    = 0;
     _sensor2LowAt    = 0;
     _altUltimoCambio = millis();
+}
+
+// Llamado desde WebConfig cuando se aprieta "Terminar partido" en el panel —
+// cierra el partido ya mismo con el marcador actual, con el mismo cierre que
+// un fin de partido natural: pitido, comentario final y ganador en la farola.
+void finalizarPartidoManual() {
+    if (!partido.activo && !partido.pausado) return;
+    partido.activo    = false;
+    partido.pausado   = false;
+    partido.terminado = true;
+    int8_t w = partido.ganador();
+    vozPitidoFinal();
+    comentaristaFinalPartido(partido);
+    displayGanador(w);
+    if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
+    else                                             _jugarDeNuevoPendiente = true;
+    Serial.println("\n[JUEGO] Partido finalizado manualmente (web)");
 }
 
 
@@ -153,7 +178,7 @@ void setup() {
     vozBegin();
 
     // Para ambos DFPlayers al arrancar (siguen con poder aunque el ESP32 haya reseteado)
-    Serial.println("[BOOT] Parando DFPlayers...");
+    Serial.println("[BOOT] Silenciando DFPlayers para arrancar limpio (normal, no es un error)...");
     vozStop();
     ambienteReiniciar();
 
@@ -170,7 +195,7 @@ void setup() {
     ambienteSetVolumen(config.volumenAmbiente);
     for (uint8_t i = 0; i < 30; i++) { vozPoll(); ambientePoll(); delay(10); }
     // Inicia SP2 con pista ambiente
-    displayInit();  // scrollea "METEGOL!" — se completa en los primeros ciclos de loop()
+    displayInit();  // scrollea "MAKERGOL!" — se completa en los primeros ciclos de loop()
 
     partido.resetear();
     reposoInit();
@@ -199,46 +224,63 @@ void loop() {
     bool cur2 = digitalRead(PIN_SENSOR_BLANCO);
 
     if (partido.activo) {
+        // Filtro anti-ruido: un flanco de bajada arma un candidato, y el gol recién
+        // se confirma si el sensor sigue en LOW pasados SENSOR_MIN_LOW_MS — un rebote
+        // o ruido que vuelve a HIGH antes de eso se descarta sin contar.
         if (millis() - _ultimoGol1 >= 5000) {
-            if (cur1 == LOW && _prevSensor1 == HIGH) {
-                _ultimoGol1 = millis();
-                partido.registrarGol(0);
-                Serial.printf("\n──── GOL!  %d ─ %d  ──────────────────────────\n",
-                    partido.goles[0], partido.goles[1]);
-                Serial.printf("     Celeste anota!\n");
-                ambienteOnGol();
-                displayMarcador(partido.goles[0], partido.goles[1]);
-                comentaristaOnGol(partido);
-                displayGol();
-                if (partido.terminado) {
-                    int8_t w = partido.ganador();
-                    Serial.printf("     → FINAL  |  %s\n",
-                        w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
-                    _finGolPendiente      = true;
-                    _finGolGanador        = w;
-                    _finGolPendienteDesde = millis();
+            if (cur1 == LOW) {
+                if (_prevSensor1 == HIGH) {
+                    _sensor1LowAt = millis();
+                } else if (_sensor1LowAt != 0 && millis() - _sensor1LowAt >= SENSOR_MIN_LOW_MS) {
+                    _sensor1LowAt = 0;
+                    _ultimoGol1 = millis();
+                    partido.registrarGol(0);
+                    Serial.printf("\n──── GOL!  %d ─ %d  ──────────────────────────\n",
+                        partido.goles[0], partido.goles[1]);
+                    Serial.printf("     Celeste anota!\n");
+                    ambienteOnGol();
+                    displayMarcador(partido.goles[0], partido.goles[1]);
+                    comentaristaOnGol(partido);
+                    displayGol();
+                    if (partido.terminado) {
+                        int8_t w = partido.ganador();
+                        Serial.printf("     → FINAL  |  %s\n",
+                            w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
+                        _finGolPendiente      = true;
+                        _finGolGanador        = w;
+                        _finGolPendienteDesde = millis();
+                    }
                 }
+            } else {
+                _sensor1LowAt = 0;
             }
         }
         if (millis() - _ultimoGol2 >= 5000) {
-            if (cur2 == LOW && _prevSensor2 == HIGH) {
-                _ultimoGol2 = millis();
-                partido.registrarGol(1);
-                Serial.printf("\n──── GOL!  %d ─ %d  ──────────────────────────\n",
-                    partido.goles[0], partido.goles[1]);
-                Serial.printf("     Blanco anota!\n");
-                ambienteOnGol();
-                displayMarcador(partido.goles[0], partido.goles[1]);
-                comentaristaOnGol(partido);
-                displayGol();
-                if (partido.terminado) {
-                    int8_t w = partido.ganador();
-                    Serial.printf("     → FINAL  |  %s\n",
-                        w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
-                    _finGolPendiente      = true;
-                    _finGolGanador        = w;
-                    _finGolPendienteDesde = millis();
+            if (cur2 == LOW) {
+                if (_prevSensor2 == HIGH) {
+                    _sensor2LowAt = millis();
+                } else if (_sensor2LowAt != 0 && millis() - _sensor2LowAt >= SENSOR_MIN_LOW_MS) {
+                    _sensor2LowAt = 0;
+                    _ultimoGol2 = millis();
+                    partido.registrarGol(1);
+                    Serial.printf("\n──── GOL!  %d ─ %d  ──────────────────────────\n",
+                        partido.goles[0], partido.goles[1]);
+                    Serial.printf("     Blanco anota!\n");
+                    ambienteOnGol();
+                    displayMarcador(partido.goles[0], partido.goles[1]);
+                    comentaristaOnGol(partido);
+                    displayGol();
+                    if (partido.terminado) {
+                        int8_t w = partido.ganador();
+                        Serial.printf("     → FINAL  |  %s\n",
+                            w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
+                        _finGolPendiente      = true;
+                        _finGolGanador        = w;
+                        _finGolPendienteDesde = millis();
+                    }
                 }
+            } else {
+                _sensor2LowAt = 0;
             }
         }
     }
@@ -297,17 +339,22 @@ void loop() {
     // ---- Comentarista: corre después de sensores, respeta _proximoComentario ----
     comentaristaLoop(partido);
 
-    // ---- Display: scrollea el tiempo restante cada intervaloDisplay segundos ----
+    // ---- Display: alterna marcador ↔ tiempo restante en modo tiempo, cada uno
+    //     quieto (no scrolleando) su ratito de intervaloDisplay segundos ----
     if (partido.activo && config.modoJuego == 1) {
         uint32_t ahora = millis();
         if (ahora - _altUltimoCambio >= (uint32_t)config.intervaloDisplay * 1000UL
             && !displayEnScroll()) {   // no pisar un "Gollll!!!"/"Fin!..." recién disparado
-            _altUltimoCambio = ahora;
-            uint32_t total    = (uint32_t)config.duracionMin * 60000UL;
-            uint32_t elapsed  = ahora - partido.inicio;
-            uint32_t restante = (elapsed < total) ? (total - elapsed) : 0;
-            displayTiempo(restante);
-            // Al terminar el scroll, displayTick vuelve al marcador automáticamente
+            _altUltimoCambio  = ahora;
+            _altMuestraTiempo = !_altMuestraTiempo;
+            if (_altMuestraTiempo) {
+                uint32_t total    = (uint32_t)config.duracionMin * 60000UL;
+                uint32_t elapsed  = ahora - partido.inicio;
+                uint32_t restante = (elapsed < total) ? (total - elapsed) : 0;
+                displayTiempo(restante);
+            } else {
+                displayMarcadorConScroll(partido.goles[0], partido.goles[1]);
+            }
         }
     }
 
@@ -371,7 +418,8 @@ void loop() {
                     ambienteReiniciar();
                     partido.resetear();
                     partido.activo = true;
-                    _altUltimoCambio = millis();
+                    _altUltimoCambio  = millis();
+                    _altMuestraTiempo = false;
                     _ultimoGol1 = millis(); _ultimoGol2 = millis();
                     _prevSensor1 = digitalRead(PIN_SENSOR_CELESTE);
                     _prevSensor2 = digitalRead(PIN_SENSOR_BLANCO);
@@ -402,7 +450,8 @@ void loop() {
                     ambienteReiniciar();
                     partido.resetear();
                     partido.activo = true;
-                    _altUltimoCambio = millis();
+                    _altUltimoCambio  = millis();
+                    _altMuestraTiempo = false;
                     _ultimoGol1 = millis(); _ultimoGol2 = millis();
                     _prevSensor1 = digitalRead(PIN_SENSOR_CELESTE);
                     _prevSensor2 = digitalRead(PIN_SENSOR_BLANCO);

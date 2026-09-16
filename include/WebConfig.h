@@ -24,7 +24,7 @@ struct Config {
     uint8_t  intervaloDisplay;  // seg entre marcador↔tiempo en modo tiempo (default 5)
 
     // Display — textos customizables (farola)
-    char textoBoot[20];             // al bootear el ESP32          — "METEGOL!"
+    char textoBoot[20];             // al bootear el ESP32          — "MAKERGOL!"
     char textoArranca[20];          // al iniciar partido            — "ARRANCAAA!"
     char textoPausa[20];            // al pausar                     — "PAUSA!"
     char textoReanuda[20];          // al reanudar                   — "VAMOS!"
@@ -35,7 +35,7 @@ struct Config {
     char textoEmpate[28];           // fin de partido, empate        — "Fin! Empate!"
     char textoPreparense[20];       // prefijo del anuncio del próximo partido de torneo — "Preparense"
     char textoJugarDeNuevo[32];     // tras el ganador, si no hay torneo en curso — "Presiona para jugar de nuevo!"
-    char textoReposo[32];           // mensaje marketinero durante el reposo — "METEGOL BRUMELAB - Toca para jugar!"
+    char textoReposo[32];           // mensaje marketinero durante el reposo — "MAKERGOL - Toca para jugar!"
 
     // Reposo — inactividad antes de bajar consumo (ver Reposo.h)
     uint16_t standbyTimeoutSegs;    // seg de inactividad antes de entrar en reposo (default 480 = 8 min)
@@ -53,10 +53,6 @@ struct Config {
     uint16_t primerosMinsSegs;        // seg de PRIMEROS_MINUTOS (default 120)
     uint16_t ultimoTramoSegs;         // seg restantes para ultimo_tramo en modo tiempo (default 60)
     uint16_t umbralAburridoSegs;      // seg sin goles para ABURRIDO aunque haya goleada (default 180)
-    uint8_t  golReaccionTimeoutSegs;  // watchdog SP2: fuerza salida de gol_reaccion si el DFPlayer
-                                      // no avisa que terminó (default 4)
-    uint8_t  hinchadaTimeoutSegs;     // watchdog SP2: fuerza salida de hinchada si el DFPlayer
-                                      // no avisa que terminó — dura más que gol_reaccion (default 20)
 
     // Comentarista — rangos por estado (pistas 01–54)
     RangoAudio comentInicio;          // {1,  6}
@@ -96,12 +92,12 @@ struct Config {
     RangoAudio hinchadaMusica;        // {5, 8}
     RangoAudio momentoCaliente;       // {9, 11}
     RangoAudio ambienteGol;           // {12, 17}
-    int8_t     ambienteGenericoBoost; // ajuste de volumen (+/-) solo para "ambiente genérico" —
-                                      // compensa si esas pistas están grabadas más flojas que
-                                      // la reacción de gol/hinchada (default 0)
 };
 
 extern Config config;
 
 void webConfigInit(Partido* p);  // inicia AP + servidor
 void webConfigLoop();            // llamar en loop()
+
+void webConfigApagarWifi();      // reposo: apaga la radio WiFi (AP+STA) para bajar consumo real
+void webConfigReactivarWifi();   // sale de reposo: reactiva AP+STA, mDNS y el servidor

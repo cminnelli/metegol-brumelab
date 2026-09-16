@@ -18,7 +18,6 @@ Click inicio
 [SP1] Comentario de inicio (pistas 01–06)
   ↓ (partido en curso)
   ├─ Cada 12–35s → [SP1] Comentario según estado del partido
-  ├─ Cada 2 min → [SP2] Cambia de pista aleatoria (misma categoría o alterna genérico/hinchada)
   ├─ Estado CALIENTE → [SP2] Cambia a música caliente (pistas 09–11)
   └─ Gol →
        [SP2] Reacción de hinchada one-shot (pistas 12–17)
@@ -160,25 +159,25 @@ SP2 tiene su propia SD con pistas 1–17 y opera en una máquina de estados inde
 |--------|--------|--------|------------|
 | `PARADO` | Partido no activo | Silencio | — |
 | `NORMAL` | Partido activo, no caliente | Ambiente genérico (1–4), seamless loop | La mayor parte del partido |
-| `HINCHADA` | Después del 1er gol_reaccion | Hinchada (5–8), one-shot | **1 sola vez por partido** |
+| `HINCHADA` | Después de un gol_reaccion | Hinchada (5–8), one-shot | **Máx. 2 veces por partido** |
 | `CALIENTE` | Partido activo + estado caliente | Momento caliente (9–11), seamless loop | **Máx. 2 veces por partido** |
 | `GOL_REACCION` | Al momento de cada gol | Reacción de gol (12–17), one-shot | Cada gol |
 
 ### Comportamiento por estado
 
-**NORMAL:** arranca al iniciar el partido. Elige una pista aleatoria de `ambienteGenérico` (1–4) que loopea sin corte (`0x19` DFPlayer) de forma indefinida. No cambia automáticamente de pista — la misma pista suena mientras el partido esté normal.
+**NORMAL:** arranca al iniciar el partido. Elige una pista aleatoria de `ambienteGenérico` (1–4) que loopea sin corte (`0x19` DFPlayer) de forma indefinida. No cambia sola con el tiempo — solo cambia a otra pista aleatoria del mismo rango cuando vuelve a NORMAL por un evento real (por ejemplo, tras la reacción de un gol, o al enfriarse desde CALIENTE). En un partido sin goles, la misma pista suena todo el partido — es intencional, para no meter cambios de intensidad de fondo que no correspondan a nada del juego.
 
-**HINCHADA:** se dispara una sola vez por partido, al finalizar la primera reacción de gol. Reproduce una pista aleatoria de `hinchadaMusica` (5–8) sin loop. Al terminar, vuelve al modo anterior (NORMAL o CALIENTE).
+**HINCHADA:** se dispara al llegar a `hinchadaGol` goles, al finalizar esa reacción de gol. Reproduce una pista aleatoria de `hinchadaMusica` (5–8) sin loop. Si otro gol la interrumpe mientras sigue sonando, "retoma" hinchada con otra pista al azar del mismo rango una vez más — pero como máximo 2 veces en total por partido. Pasado ese tope, los goles siguientes ya no vuelven a traer hinchada: solo reaccionan y vuelven directo al modo anterior (NORMAL o CALIENTE).
 
-**CALIENTE:** entra cuando el comentarista detecta estado CALIENTE. Cambia a `momentoCaliente` (9–11) con fade-out de la pista anterior. Loopea seamless. Al enfriarse el partido, vuelve a NORMAL con fade-out. Máximo 2 sesiones caliente por partido.
+**CALIENTE:** entra cuando el comentarista detecta estado CALIENTE. Cambia a `momentoCaliente` (9–11). Loopea seamless. Al enfriarse el partido, vuelve a NORMAL. Máximo 2 sesiones caliente por partido.
 
-**GOL_REACCION:** al detectar un gol, interrumpe instantáneamente y reproduce una pista de `ambienteGol` (12–17) sin loop, con volumen asegurado. Al terminar: si es la primera vez → entra en HINCHADA; si ya sonó → restaura el modo anterior. El comentarista espera hasta que termine la reacción + 2s de margen.
+**GOL_REACCION:** al detectar un gol, interrumpe instantáneamente y reproduce una pista de `ambienteGol` (12–17) sin loop, con volumen asegurado. Al terminar: entra o retoma HINCHADA si corresponde (ver arriba, tope 2 veces por partido); si no, restaura el modo anterior (NORMAL o CALIENTE). El comentarista espera hasta que termine la reacción + 2s de margen.
 
-### Transiciones suaves
+### Transiciones entre pistas de ambiente
 
-Al cambiar de modo (NORMAL↔CALIENTE), SP2 primero baja el volumen a 0 (`150ms`), inicia la nueva pista, y restaura el volumen `~250ms` después. El efecto es una breve pausa limpia entre tracks, mucho menos abrupta que un corte directo.
+El DFPlayer de SP2 solo puede reproducir una pista a la vez — no hay crossfade real posible. El cambio de pista de ambiente (NORMAL↔CALIENTE, entrar/salir/retomar HINCHADA, volver de una reacción de gol) es directo e instantáneo, sin fade de volumen ni pista de transición: las pistas de ambiente ya vienen grabadas con su propio fade in/out, así que el corte se escucha limpio sin necesidad de taparlo con nada por software.
 
-Las reacciones de gol y la hinchada son inmediatas (sin fade) porque reemplazan intencionalmente el sonido en curso.
+(Se probó tapar el corte con una pista corta de "transición" antes de la pista nueva, pero dependía de tener esos archivos extra grabados en la SD — y cuando faltaba alguno, el DFPlayer tiraba error y el intento de taparlo terminaba sonando peor que el corte directo. Se descartó.)
 
 ### Watchdog
 
@@ -200,7 +199,6 @@ Si SP2 queda en silencio por error (`0x40` DFPlayer), en el próximo ciclo de `a
 
 **Hardcodeados (no configurables):**
 - Ventana de "acción reciente" para CALIENTE: **45 segundos**
-- Intervalo de cambio de fase en SP2 NORMAL: **120 segundos**
 - Margen post-gol antes de comentario regular: **2 segundos**
 
 ---

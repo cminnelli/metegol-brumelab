@@ -394,7 +394,10 @@ void comentaristaLoop(const Partido& partido) {
     if (millis() < _proximoComentario) return;
 
     if (_inicioPendiente) {
-        if (vozIsBusy()) { _proximoComentario = millis() + 2000UL; return; }
+        // Reintenta cada 300ms (no cada 2s) — vozIsBusy() es solo leer una bandera
+        // en memoria, no cuesta nada consultarla seguido, y así el comentario de
+        // inicio sale apenas termina el pitido en vez de esperar hasta 2s de más.
+        if (vozIsBusy()) { _proximoComentario = millis() + 300UL; return; }
         _inicioPendiente = false;
         _inicioFiredAt   = millis();
         reproducir("COMENTARIO", "inicio", config.comentInicio, 0);
