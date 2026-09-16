@@ -14,6 +14,15 @@
 
 static MD_Parola disp(HW_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
+// La matriz tiene solo 4 módulos de ancho — mientras el texto viejo termina de
+// salir y el nuevo todavía no entró, la pantalla queda en blanco un rato real.
+// No hay forma de cruzarlos de verdad (MD_Parola anima un solo texto genérico
+// por zona, no dos al mismo tiempo, sin reescribir el renderizado a mano). Lo
+// que sí se puede achicar es CUÁNTO dura ese tramo en blanco: la salida y la
+// entrada van un poco más rápido que el scroll normal (que sí hay que poder
+// leer mientras se mueve) — acá no hace falta leer nada mientras se desliza.
+#define VELOCIDAD_TRANSICION_MS 25
+
 static char _marcador[8] = "0-0";
 static bool _enScroll = false;
 
@@ -34,10 +43,10 @@ static bool _mantenerTrasScroll = false;
 // guarda acá y displayTick() la arranca sola, apenas termina la que está en
 // curso. Si llega un tercer pedido antes de que eso pase, pisa al que estaba en
 // cola: solo importa el último.
-enum class TipoPendiente : uint8_t { NINGUNO, SCROLL, ENTRADA_MARCADOR, ENTRADA_TIEMPO };
+enum class TipoPendiente : uint8_t { NINGUNO, SCROLL, GOL, ENTRADA_MARCADOR, ENTRADA_TIEMPO };
 struct Pendiente {
     TipoPendiente  tipo = TipoPendiente::NINGUNO;
-    char           texto[64];        // TipoPendiente::SCROLL
+    char           texto[64];        // TipoPendiente::SCROLL y TipoPendiente::GOL
     textPosition_t align;
     textEffect_t   efecto;
     uint16_t       velocidad;
@@ -45,6 +54,17 @@ struct Pendiente {
     uint32_t       tiempoMs;                // TipoPendiente::ENTRADA_TIEMPO
 };
 static Pendiente _pendiente;
+
+// Cuánto se queda quieto el festejo de gol en pantalla (ver iniciarGol) antes
+// de cerrarse solo y volver al marcador.
+#define GOL_PAUSA_MS 1100
+
+// El festejo "explota desde el centro" solo se ve bien si el texto entra
+// entero en los 4 módulos (32 columnas) — con la fuente por defecto, son unos
+// 6 caracteres cómodos. Pasado eso, displayGol() sigue scrolleando como antes
+// para que un mensaje largo (ej. el default "Gollll!!!", o uno personalizado
+// más largo desde el panel) se pueda leer completo.
+#define GOL_MAX_CHARS_EFECTO 6
 
 // La fuente de MD_MAX72XX es solo ASCII — un nombre con tilde o "ñ" (2 bytes en
 // UTF-8) se ve como un cuadrito o corta el texto. Traduce los acentos españoles
@@ -106,7 +126,7 @@ static void iniciarEntradaMarcador(uint8_t local, uint8_t visitante) {
     _mantenerTrasScroll = true;
     _enScroll = true;
     disp.displayClear();
-    disp.displayText(_marcador, PA_CENTER, config.velocidadScroll, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
+    disp.displayText(_marcador, PA_CENTER, VELOCIDAD_TRANSICION_MS, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
 }
 
 // Igual que arriba pero para el tiempo restante (ver displayTiempo).
@@ -118,7 +138,7 @@ static void iniciarEntradaTiempo(uint32_t ms) {
     _mantenerTrasScroll = true;
     _enScroll = true;
     disp.displayClear();
-    disp.displayText(buf, PA_CENTER, config.velocidadScroll, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
+    disp.displayText(buf, PA_CENTER, VELOCIDAD_TRANSICION_MS, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
 }
 
 // Hace SALIR lo que está quieto en pantalla ahora mismo, deslizándolo hacia la
@@ -130,7 +150,19 @@ static void iniciarEntradaTiempo(uint32_t ms) {
 static void iniciarSalida(const char* textoActual) {
     _enScroll = true;
     _mantenerTrasScroll = false;
-    disp.displayText(textoActual, PA_CENTER, config.velocidadScroll, 0, PA_PRINT, PA_SCROLL_LEFT);
+    disp.displayText(textoActual, PA_CENTER, VELOCIDAD_TRANSICION_MS, 0, PA_PRINT, PA_SCROLL_LEFT);
+}
+
+// Festejo de gol: en vez de cruzar la pantalla scrolleando (se lee de paso y
+// listo), "explota" desde el centro hacia los bordes, se queda quieto
+// GOL_PAUSA_MS, y se cierra solo hacia el centro otra vez — vuelve al
+// marcador después (_mantenerTrasScroll queda en false, igual que cualquier
+// scroll de paso).
+static void iniciarGol(const char* buf) {
+    _enScroll = true;
+    _mantenerTrasScroll = false;
+    disp.displayClear();
+    disp.displayText(buf, PA_CENTER, VELOCIDAD_TRANSICION_MS, GOL_PAUSA_MS, PA_OPENING, PA_CLOSING);
 }
 
 // Todo texto scrolleado pasa por acá — reutiliza un único buffer estático porque
@@ -177,6 +209,10 @@ void displayTick() {
         case TipoPendiente::SCROLL:
             _pendiente.tipo = TipoPendiente::NINGUNO;
             iniciarScroll(_pendiente.texto, _pendiente.align, _pendiente.efecto, _pendiente.velocidad);
+            return;
+        case TipoPendiente::GOL:
+            _pendiente.tipo = TipoPendiente::NINGUNO;
+            iniciarGol(_pendiente.texto);
             return;
         case TipoPendiente::ENTRADA_MARCADOR:
             _pendiente.tipo = TipoPendiente::NINGUNO;
@@ -233,7 +269,19 @@ void displayMarcadorConScroll(uint8_t local, uint8_t visitante) {
 }
 
 void displayGol() {
-    scrollSanitizado(config.textoGol, PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+    static char buf[24];
+    asciiSanitize(config.textoGol, buf, sizeof(buf));
+    if (strlen(buf) > GOL_MAX_CHARS_EFECTO) {
+        // No entra entero en la matriz — scroll de toda la vida, para que se lea completo.
+        scrollSanitizado(config.textoGol, PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+        return;
+    }
+    if (_enScroll) {
+        _pendiente.tipo = TipoPendiente::GOL;
+        strlcpy(_pendiente.texto, buf, sizeof(_pendiente.texto));
+        return;
+    }
+    iniciarGol(buf);
 }
 
 void displayGanador(int8_t w) {

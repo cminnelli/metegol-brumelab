@@ -57,17 +57,24 @@ static unsigned long _sensor1LowAt = 0;   // momento en que sensor1 bajó a LOW
 static unsigned long _sensor2LowAt = 0;
 #define SENSOR_MIN_LOW_MS 20              // duración mínima LOW para validar gol
 
-// Fin de partido por gol: el relato del gol (SP1) y la reacción (SP2) tienen que
-// terminar de sonar antes de disparar el pitido final — ver loop().
-// _finGolPendienteDesde + FIN_GOL_MAX_ESPERA_MS acotan la espera: si algo se cuelga
-// (ej. SP1 nunca avisa que terminó), se fuerza igual en vez de quedar trabado para
-// siempre. Mientras _finGolPendiente sea true, el botón de "nuevo partido"/cancelar
-// se ignora — evita que arrancar el próximo partido cancele en silencio el pitido,
-// el cartel de "Ganador" y el comentario final del partido que recién terminó.
+// Fin de partido (por gol o por tiempo): espera a que termine lo que esté
+// sonando en SP1 (el relato del gol, o cualquier comentario regular que
+// hubiera en curso) — y la reacción de gol en SP2, si corresponde — antes de
+// disparar el pitido final. Sin esto, el pitido se manda igual apenas se
+// cumple la condición de fin y puede cortarle la frase a un comentario
+// cualquiera que estuviera sonando en ese momento — ver loop().
+// _finXPendienteDesde + FIN_PARTIDO_MAX_ESPERA_MS acotan la espera: si algo se
+// cuelga (ej. SP1 nunca avisa que terminó), se fuerza igual en vez de quedar
+// trabado para siempre. Mientras cualquiera de los dos esté pendiente, el botón
+// de "nuevo partido"/cancelar se ignora — evita que arrancar el próximo partido
+// cancele en silencio el pitido, el cartel de "Ganador" y el comentario final.
 static bool     _finGolPendiente      = false;
 static int8_t   _finGolGanador        = -1;
 static uint32_t _finGolPendienteDesde = 0;
-#define FIN_GOL_MAX_ESPERA_MS 7000UL
+static bool     _finSinGolPendiente      = false;
+static int8_t   _finSinGolGanador        = -1;
+static uint32_t _finSinGolPendienteDesde = 0;
+#define FIN_PARTIDO_MAX_ESPERA_MS 7000UL
 
 // Fin de partido de torneo: anuncia en la farola quiénes juegan a continuación,
 // una vez que terminó de scrollear el "Fin! Ganador..." — ver loop()
@@ -94,9 +101,9 @@ static void anunciarProximosTorneo() {
 }
 
 // Llamado desde WebConfig antes de arrancar/reanudar un partido por web — evita la
-// misma carrera que el botón del encoder (ver _finGolPendiente arriba)
+// misma carrera que el botón del encoder (ver _finGolPendiente/_finSinGolPendiente arriba)
 bool finDePartidoPendiente() {
-    return _finGolPendiente;
+    return _finGolPendiente || _finSinGolPendiente;
 }
 
 // Llamado desde WebConfig al iniciar/reanudar via web — resetea sensores igual que el encoder
@@ -117,20 +124,19 @@ void resetearDeteccionGoles() {
 }
 
 // Llamado desde WebConfig cuando se aprieta "Terminar partido" en el panel —
-// cierra el partido ya mismo con el marcador actual, con el mismo cierre que
-// un fin de partido natural: pitido, comentario final y ganador en la farola.
+// cierra el partido ya mismo con el marcador actual. El pitido/comentario final
+// quedan pendientes hasta que SP1 esté libre (mismo criterio que el fin por
+// gol/tiempo — ver _finSinGolPendiente y el bloque que lo dispara en loop()),
+// para no cortarle la frase a un comentario que estuviera sonando en ese momento.
 void finalizarPartidoManual() {
     if (!partido.activo && !partido.pausado) return;
     partido.activo    = false;
     partido.pausado   = false;
     partido.terminado = true;
-    int8_t w = partido.ganador();
-    vozPitidoFinal();
-    comentaristaFinalPartido(partido);
-    displayGanador(w);
-    if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
-    else                                             _jugarDeNuevoPendiente = true;
-    Serial.println("\n[JUEGO] Partido finalizado manualmente (web)");
+    _finSinGolGanador        = partido.ganador();
+    _finSinGolPendiente      = true;
+    _finSinGolPendienteDesde = millis();
+    Serial.println("\n[JUEGO] Partido finalizado manualmente (web) — esperando cierre (pitido/comentario)");
 }
 
 
@@ -242,6 +248,12 @@ void loop() {
                     displayMarcador(partido.goles[0], partido.goles[1]);
                     comentaristaOnGol(partido);
                     displayGol();
+                    // Reinicia la alternancia marcador↔tiempo desde ahora — sin esto, si
+                    // el gol coincide con el momento en que ya le tocaba disparar, el
+                    // marcador se redibuja por el gol Y CASI ENSEGUIDA la alternancia
+                    // dispara de nuevo un scroll completo de salida+entrada: se ve como
+                    // si scrolleara dos veces seguidas (intermitente, según el timing).
+                    _altUltimoCambio = millis();
                     if (partido.terminado) {
                         int8_t w = partido.ganador();
                         Serial.printf("     → FINAL  |  %s\n",
@@ -270,6 +282,7 @@ void loop() {
                     displayMarcador(partido.goles[0], partido.goles[1]);
                     comentaristaOnGol(partido);
                     displayGol();
+                    _altUltimoCambio = millis();  // ídem arriba — evita el doble scroll del marcador
                     if (partido.terminado) {
                         int8_t w = partido.ganador();
                         Serial.printf("     → FINAL  |  %s\n",
@@ -289,10 +302,10 @@ void loop() {
 
     // ---- Fin de partido por gol: espera a que termine el relato del gol (SP1) y
     //     la reacción de gol (SP2) antes de disparar el pitido final — con techo:
-    //     si algo se cuelga, se fuerza igual pasados FIN_GOL_MAX_ESPERA_MS ----
+    //     si algo se cuelga, se fuerza igual pasados FIN_PARTIDO_MAX_ESPERA_MS ----
     if (_finGolPendiente &&
         ((!vozIsBusy() && strcmp(ambienteGetEstado(), "gol_reaccion") != 0)
-         || (millis() - _finGolPendienteDesde > FIN_GOL_MAX_ESPERA_MS))) {
+         || (millis() - _finGolPendienteDesde > FIN_PARTIDO_MAX_ESPERA_MS))) {
         _finGolPendiente = false;
         // No se llama ambienteReiniciar() acá: el ambiente que ya está sonando
         // (genérico o caliente) sigue de fondo durante el pitido y el comentario
@@ -303,6 +316,21 @@ void loop() {
         displayGanador(_finGolGanador);
         if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
         else                                             _jugarDeNuevoPendiente = true;
+    }
+
+    // ---- Fin de partido sin gol (por tiempo, o "Terminar partido" desde la web):
+    //     mismo criterio que el fin por gol de arriba — espera a que termine
+    //     cualquier comentario en curso en SP1 antes de disparar el pitido final,
+    //     para no cortarle la frase a la mitad ----
+    if (_finSinGolPendiente &&
+        (!vozIsBusy() || (millis() - _finSinGolPendienteDesde > FIN_PARTIDO_MAX_ESPERA_MS))) {
+        _finSinGolPendiente = false;
+        vozPitidoFinal();
+        comentaristaFinalPartido(partido);
+        displayGanador(_finSinGolGanador);
+        if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
+        else                                             _jugarDeNuevoPendiente = true;
+        Serial.println("\n[JUEGO] Cierre de partido disparado (pitido/comentario final)");
     }
 
     // ---- Torneo: anuncia a los próximos jugadores una vez que terminó de
@@ -400,10 +428,11 @@ void loop() {
         }
 
         if (btnPending > 0 && (now - btnReleaseAt) >= BTN_DOUBLE_MS) {
-            if (_finGolPendiente) {
-                // Todavía falta sonar el pitido/ganador/comentario final del gol que
-                // acaba de terminar el partido — se ignora el click para no cancelarlo
-                // en silencio (queda acotado por FIN_GOL_MAX_ESPERA_MS, nunca traba del todo).
+            if (_finGolPendiente || _finSinGolPendiente) {
+                // Todavía falta sonar el pitido/ganador/comentario final del partido que
+                // acaba de terminar (por gol o por tiempo) — se ignora el click para no
+                // cancelarlo en silencio (queda acotado por FIN_PARTIDO_MAX_ESPERA_MS,
+                // nunca traba del todo).
                 Serial.println("\n[ENCODER] Click ignorado — esperando cierre del partido anterior");
                 btnPending = 0;
                 noInterrupts(); encDelta = 0; encChanged = false; interrupts();
@@ -444,7 +473,8 @@ void loop() {
                     Serial.println("\n[ENCODER] Partido reanudado");
                 } else if (partido.terminado) {
                     // Terminado → nuevo partido
-                    _finGolPendiente = false;
+                    _finGolPendiente    = false;
+                    _finSinGolPendiente = false;
                     vozPitidoInicio();
                     comentaristaReiniciar();
                     ambienteReiniciar();
@@ -461,7 +491,8 @@ void loop() {
                 }
             } else {
                 // Doble click: cancela el partido y vuelve a espera
-                _finGolPendiente = false;
+                _finGolPendiente    = false;
+                _finSinGolPendiente = false;
                 ambienteReiniciar();
                 comentaristaReiniciar();
                 partido.activo    = false;
@@ -476,23 +507,22 @@ void loop() {
         }
     }
 
-    // Fin de partido por tiempo (modo tiempo, sin necesidad de que haya gol)
+    // Fin de partido por tiempo (modo tiempo, sin necesidad de que haya gol) — el
+    // marcador/estado cambia ya mismo, apenas se cumple el tiempo; el pitido y el
+    // comentario final quedan pendientes hasta que SP1 esté libre (ver más arriba).
     if (partido.activo && config.modoJuego == 1) {
         if ((millis() - partido.inicio) >= (uint32_t)config.duracionMin * 60000UL) {
             partido.activo    = false;
             partido.terminado = true;
-            int8_t w = partido.ganador();
             // Sin ambienteReiniciar() acá: el ambiente sigue de fondo durante el
             // pitido y el comentario final (se resetea al arrancar el próximo partido).
-            vozPitidoFinal();
-            comentaristaFinalPartido(partido);
-            displayGanador(w);
-            if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
-            else                                             _jugarDeNuevoPendiente = true;
-            if (w == 0)      Serial.println("\n[JUEGO] ¡Ganó equipo 1! (tiempo)");
-            else if (w == 1) Serial.println("\n[JUEGO] ¡Ganó equipo 2! (tiempo)");
-            else             Serial.println("\n[JUEGO] ¡Empate! (tiempo)");
-            Serial.println("\n[JUEGO] Partido finalizado por tiempo");
+            _finSinGolGanador        = partido.ganador();
+            _finSinGolPendiente      = true;
+            _finSinGolPendienteDesde = millis();
+            if (_finSinGolGanador == 0)      Serial.println("\n[JUEGO] ¡Ganó equipo 1! (tiempo)");
+            else if (_finSinGolGanador == 1) Serial.println("\n[JUEGO] ¡Ganó equipo 2! (tiempo)");
+            else                              Serial.println("\n[JUEGO] ¡Empate! (tiempo)");
+            Serial.println("\n[JUEGO] Partido terminado por tiempo — esperando cierre (pitido/comentario)");
         }
     }
 
