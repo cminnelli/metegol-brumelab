@@ -128,3 +128,12 @@ void displayTiempo(uint32_t ms) {
 bool displayEnScroll() {
     return _enScroll;
 }
+
+void displayEntrarReposo(const char* texto, uint8_t brillo) {
+    disp.setIntensity(brillo);
+    displayTexto(texto);
+}
+
+void displaySalirReposo(uint8_t brilloNormal) {
+    disp.setIntensity(brilloNormal);
+}

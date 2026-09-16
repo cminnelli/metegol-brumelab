@@ -12,3 +12,5 @@ void        ambienteActualizar(bool activo, bool esCaliente);
 void        ambienteOnGol();
 const char* ambienteGetEstado();
 uint8_t     ambienteGetPista();
+void        ambienteEntrarReposo();  // pausa + intenta bajar el chip a standby
+void        ambienteSalirReposo();   // vuelve a modo normal + restaura volumen

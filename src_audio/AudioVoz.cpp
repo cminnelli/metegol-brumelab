@@ -67,6 +67,17 @@ void vozPitidoFinal() {
     vozPlayTrack(n);
 }
 
+// 0x0A/0x0B (standby/normal del estándar DFPlayer Mini) se probaron acá y
+// dejaban el chip sin responder a nada después — se sacan. La pausa (0x0E)
+// sola ya garantiza el silencio real y es la misma que usa el resto del proyecto.
+void vozEntrarReposo() {
+    cmd(0x0E, 0x00, 0x00);
+}
+
+void vozSalirReposo() {
+    cmd(0x06, 0x00, config.volumenVoz);
+}
+
 void vozPoll() {
     static uint8_t buf[10], idx = 0;
     while (Serial2.available()) {

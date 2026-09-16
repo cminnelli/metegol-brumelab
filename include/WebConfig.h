@@ -35,6 +35,12 @@ struct Config {
     char textoEmpate[28];           // fin de partido, empate        — "Fin! Empate!"
     char textoPreparense[20];       // prefijo del anuncio del próximo partido de torneo — "Preparense"
     char textoJugarDeNuevo[32];     // tras el ganador, si no hay torneo en curso — "Presiona para jugar de nuevo!"
+    char textoReposo[32];           // mensaje marketinero durante el reposo — "METEGOL BRUMELAB - Toca para jugar!"
+
+    // Reposo — inactividad antes de bajar consumo (ver Reposo.h)
+    uint16_t standbyTimeoutSegs;    // seg de inactividad antes de entrar en reposo (default 480 = 8 min)
+    uint16_t reposoIntervaloSegs;   // seg entre cada re-scroll del texto en reposo (default 30)
+    uint8_t  reposoBrillo;          // 0-15, brillo de la farola durante el reposo (default 1)
 
     // Comentarista — intervalo y thresholds
     uint16_t intervaloComentariosMin; // default 10

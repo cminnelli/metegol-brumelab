@@ -4,6 +4,7 @@
 #include "Comentarista.h"
 #include "Torneo.h"
 #include "Display.h"
+#include "Reposo.h"
 #include <Arduino.h>
 #include <string.h>
 
@@ -141,6 +142,12 @@ static void cargarConfig() {
     strlcpy(config.textoEmpate,         prefs.getString("txtEmp",  "Fin! Empate!").c_str(),            sizeof(config.textoEmpate));
     strlcpy(config.textoPreparense,     prefs.getString("txtPrep", "Preparense").c_str(),              sizeof(config.textoPreparense));
     strlcpy(config.textoJugarDeNuevo,   prefs.getString("txtJDN",  "Presiona para jugar de nuevo!").c_str(), sizeof(config.textoJugarDeNuevo));
+    strlcpy(config.textoReposo,         prefs.getString("txtReposo", "METEGOL BRUMELAB - Toca para jugar!").c_str(), sizeof(config.textoReposo));
+
+    // Reposo
+    config.standbyTimeoutSegs  = prefs.getUShort("stbyTO",   480);  // 8 min
+    config.reposoIntervaloSegs = prefs.getUShort("stbyInterv", 60);
+    config.reposoBrillo        = prefs.getUChar("stbyBrillo",   0);
 
     // Comentarista — thresholds
     config.intervaloComentariosMin = prefs.getUShort("intervComMin",  12);
@@ -263,6 +270,12 @@ static void guardarConfig() {
     prefs.putString("txtEmp",  config.textoEmpate);
     prefs.putString("txtPrep", config.textoPreparense);
     prefs.putString("txtJDN",  config.textoJugarDeNuevo);
+    prefs.putString("txtReposo", config.textoReposo);
+
+    // Reposo
+    prefs.putUShort("stbyTO",     config.standbyTimeoutSegs);
+    prefs.putUShort("stbyInterv", config.reposoIntervaloSegs);
+    prefs.putUChar("stbyBrillo",  config.reposoBrillo);
 
     // Comentarista — thresholds
     prefs.putUShort("intervComMin",  config.intervaloComentariosMin);
@@ -633,7 +646,25 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <div class="field"><label>Fin — empate</label><input class="ti" type="text" name="txtEmp" maxlength="26" value="%TXT_EMP%"></div>
         <div class="field"><label>Anuncio próximo torneo (prefijo)</label><input class="ti" type="text" name="txtPrep" maxlength="18" value="%TXT_PREP%"></div>
         <div class="field"><label>Después del ganador (sin torneo)</label><input class="ti" type="text" name="txtJDN" maxlength="30" value="%TXT_JDN%"></div>
+        <div class="field"><label>Mensaje en reposo</label><input class="ti" type="text" name="txtReposo" maxlength="30" value="%TXT_REPOSO%"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>😴 Reposo</h2>
+    <div class="field">
+      <label>Timeout reposo seg <b id="sty">%STBY_TO%</b></label>
+      <input type="range" name="standbyTimeoutSegs" min="60" max="1800" step="30" value="%STBY_TO%" oninput="sl(this,'sty')">
+      <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Segundos sin actividad (sin partido en curso) antes de entrar en reposo.</p>
+    </div>
+    <div class="field">
+      <label>Intervalo scroll en reposo seg <b id="sti">%STBY_INTERV%</b></label>
+      <input type="range" name="reposoIntervaloSegs" min="60" max="300" value="%STBY_INTERV%" oninput="sl(this,'sti')">
+    </div>
+    <div class="field">
+      <label>Brillo en reposo <b id="stb">%STBY_BRILLO%</b></label>
+      <input type="range" name="reposoBrillo" min="0" max="15" value="%STBY_BRILLO%" oninput="sl(this,'stb')">
     </div>
   </div>
 
@@ -891,7 +922,11 @@ static const char HTML[] PROGMEM = R"rawhtml(
       const bst=document.getElementById('btn-stop');
       document.getElementById('sc-c').textContent=g[0];
       document.getElementById('sc-b').textContent=g[1];
-      if(d.activo){
+      if(d.reposo){
+        lbl.textContent='😴 En reposo';
+        pm.style.display='none';gw.style.display='none';
+        bs.textContent='Iniciar partido';bst.style.display='none';
+      }else if(d.activo){
         lbl.textContent='Partido en curso';
         pm.style.display='flex';gw.style.display='none';
         bs.textContent='Reiniciar';bst.style.display='inline-block';
@@ -1107,6 +1142,10 @@ static String buildPage() {
     html.replace("%TXT_EMP%",  config.textoEmpate);
     html.replace("%TXT_PREP%", config.textoPreparense);
     html.replace("%TXT_JDN%",  config.textoJugarDeNuevo);
+    html.replace("%TXT_REPOSO%", config.textoReposo);
+    html.replace("%STBY_TO%",      String(config.standbyTimeoutSegs));
+    html.replace("%STBY_INTERV%",  String(config.reposoIntervaloSegs));
+    html.replace("%STBY_BRILLO%",  String(config.reposoBrillo));
     // Comentarista — thresholds
     html.replace("%INTERV_COM_MIN%", String(config.intervaloComentariosMin));
     html.replace("%INTERV_COM_MAX%", String(config.intervaloComentariosMax));
@@ -1215,6 +1254,11 @@ static void handleSave() {
     if (server.hasArg("txtEmp"))  strlcpy(config.textoEmpate,         server.arg("txtEmp").c_str(),  sizeof(config.textoEmpate));
     if (server.hasArg("txtPrep")) strlcpy(config.textoPreparense,     server.arg("txtPrep").c_str(), sizeof(config.textoPreparense));
     if (server.hasArg("txtJDN"))  strlcpy(config.textoJugarDeNuevo,   server.arg("txtJDN").c_str(),  sizeof(config.textoJugarDeNuevo));
+    if (server.hasArg("txtReposo")) strlcpy(config.textoReposo,      server.arg("txtReposo").c_str(), sizeof(config.textoReposo));
+    // Reposo
+    if (server.hasArg("standbyTimeoutSegs"))  config.standbyTimeoutSegs  = constrain(server.arg("standbyTimeoutSegs").toInt(),  60, 1800);
+    if (server.hasArg("reposoIntervaloSegs")) config.reposoIntervaloSegs = constrain(server.arg("reposoIntervaloSegs").toInt(), 60, 300);
+    if (server.hasArg("reposoBrillo"))         config.reposoBrillo        = constrain(server.arg("reposoBrillo").toInt(),        0, 15);
     // Comentarista — thresholds
     if (server.hasArg("intervaloComentariosMin")) config.intervaloComentariosMin = server.arg("intervaloComentariosMin").toInt();
     if (server.hasArg("intervaloComentariosMax")) config.intervaloComentariosMax = server.arg("intervaloComentariosMax").toInt();
@@ -1302,7 +1346,8 @@ static void handleSave() {
 }
 
 static void handleEstado() {
-    char buf[200];
+    char buf[230];
+    const char* reposo = reposoActivo() ? "true" : "false";
     if (_partido) {
         char marcador[16];
         _partido->getResultado(marcador, sizeof(marcador));
@@ -1316,23 +1361,25 @@ static void handleEstado() {
         snprintf(buf, sizeof(buf),
             "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,"
             "\"tiempoRestante\":%lu,\"tiempoJuego\":\"%s\","
-            "\"estado\":\"%s\",\"activo\":%s,\"terminado\":%s,\"pausado\":%s}",
+            "\"estado\":\"%s\",\"activo\":%s,\"terminado\":%s,\"pausado\":%s,\"reposo\":%s}",
             _partido->goles[0], _partido->goles[1], marcador, config.modoJuego,
             (unsigned long)restante, tiempo, estado,
             _partido->activo    ? "true" : "false",
             _partido->terminado ? "true" : "false",
-            _partido->pausado   ? "true" : "false");
+            _partido->pausado   ? "true" : "false",
+            reposo);
     } else {
         snprintf(buf, sizeof(buf),
             "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,"
             "\"tiempoRestante\":0,\"tiempoJuego\":\"00:00\","
-            "\"estado\":\"en_espera\",\"activo\":false,\"terminado\":false,\"pausado\":false}",
-            config.modoJuego);
+            "\"estado\":\"en_espera\",\"activo\":false,\"terminado\":false,\"pausado\":false,\"reposo\":%s}",
+            config.modoJuego, reposo);
     }
     server.send(200, "application/json", buf);
 }
 
 static void handleStart() {
+    reposoNotificarActividad();  // despierta ANTES de mandar cualquier comando de audio
     if (finDePartidoPendiente()) {
         // Todavía falta sonar el pitido/ganador/comentario final del partido anterior —
         // arrancar ahora lo cancelaría en silencio (ver _finGolPendiente en main.cpp)

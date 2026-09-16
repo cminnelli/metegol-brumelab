@@ -16,3 +16,5 @@ void vozSetVolumen(uint8_t vol);
 void vozPitidoInicio();         // pitido de inicio (pistas 77-78)
 void vozPitidoFinal();          // pitido de fin    (pistas 79-80)
 bool vozIsBusy();               // true mientras SP1 está reproduciendo un track
+void vozEntrarReposo();          // pausa + intenta bajar el chip a standby
+void vozSalirReposo();           // vuelve a modo normal + restaura volumen

@@ -291,3 +291,14 @@ const char* ambienteGetEstado() {
 uint8_t ambienteGetPista() {
     return _pistaActual;
 }
+
+// 0x0A/0x0B (standby/normal del estándar DFPlayer Mini) se probaron acá y
+// dejaban el chip sin responder a nada después — se sacan. ambienteReiniciar()
+// (pausa + reset de estado) ya garantiza el silencio real.
+void ambienteEntrarReposo() {
+    ambienteReiniciar();
+}
+
+void ambienteSalirReposo() {
+    cmd(0x06, 0x00, config.volumenAmbiente);
+}

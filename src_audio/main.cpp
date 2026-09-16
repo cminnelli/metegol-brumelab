@@ -6,6 +6,7 @@
 #include "Comentarista.h"
 #include "Display.h"
 #include "Torneo.h"
+#include "Reposo.h"
 #include "config.h"
 
 #define PIN_SENSOR_CELESTE 34   // equipo celeste
@@ -172,6 +173,7 @@ void setup() {
     displayInit();  // scrollea "METEGOL!" — se completa en los primeros ciclos de loop()
 
     partido.resetear();
+    reposoInit();
     // Descarta cualquier ruido del encoder acumulado durante el boot
     noInterrupts(); encDelta = 0; encChanged = false; interrupts();
     Serial.println("[2] Sistema listo");
@@ -182,6 +184,7 @@ void loop() {
     displayTick();
     vozPoll();
     ambientePoll();
+    reposoTick(partido);
 
     // SP2 reactivo al estado del partido
     {
@@ -279,7 +282,7 @@ void loop() {
 
     // ---- Partido terminado (sin torneo): rota entre el resultado y "jugar de
     //     nuevo" cada intervaloDisplay segundos, hasta que arranque el próximo ----
-    if (_finRotando) {
+    if (_finRotando && !reposoActivo()) {
         if (!partido.terminado) {
             _finRotando = false;   // arrancó de nuevo o se canceló — corta la rotación
         } else if (!displayEnScroll()
@@ -313,6 +316,7 @@ void loop() {
         encChanged = false;
         noInterrupts(); int d = encDelta; encDelta = 0; interrupts();
         if (d != 0 && !partido.activo && !partido.pausado) {
+            reposoNotificarActividad();
             config.modoJuego = (config.modoJuego == 0) ? 1 : 0;
             displayModo(config.modoJuego == 0 ? "1-GOLES" : "2-TIEMPO");
             Serial.printf("\n[ENCODER] Modo: %s\n", config.modoJuego == 0 ? "goles" : "tiempo");
@@ -328,6 +332,7 @@ void loop() {
         if ((now - btnDebounceAt) >= BTN_DEBOUNCE_MS && raw != btnState) {
             btnState = raw;
             if (btnState == LOW) {   // presionado — inhibir goles durante toda la interacción
+                reposoNotificarActividad();
                 _ultimoGol1  = now; _ultimoGol2 = now;
                 btnPressAt   = now;
                 btnLongFired = false;
