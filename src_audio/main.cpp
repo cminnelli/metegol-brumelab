@@ -5,7 +5,6 @@
 #include "WebConfig.h"
 #include "Comentarista.h"
 #include "Display.h"
-#include "Torneo.h"
 #include "Reposo.h"
 #include "config.h"
 
@@ -77,29 +76,16 @@ static int8_t   _finSinGolGanador        = -1;
 static uint32_t _finSinGolPendienteDesde = 0;
 #define FIN_PARTIDO_MAX_ESPERA_MS 7000UL
 
-// Fin de partido de torneo: anuncia en la farola quiénes juegan a continuación,
-// una vez que terminó de scrollear el "Fin! Ganador..." — ver loop()
-static bool    _torneoAnuncioPendiente = false;
-
-// Fin de partido SIN torneo en curso: invita a jugar de nuevo, una vez que
-// terminó de scrollear el "Fin! Ganador..." — ver loop()
+// Fin de partido: invita a jugar de nuevo, una vez que terminó de scrollear
+// el "Fin! Ganador..." — ver loop()
 static bool    _jugarDeNuevoPendiente = false;
 
-// Mientras el partido queda "terminado" esperando el próximo (sin torneo), la
-// farola rota entre el resultado y el texto de "jugar de nuevo" cada
-// intervaloDisplay segundos, hasta que arranca el próximo partido — ver loop()
+// Mientras el partido queda "terminado" esperando el próximo, la farola rota
+// entre el resultado y el texto de "jugar de nuevo" cada intervaloDisplay
+// segundos, hasta que arranca el próximo partido — ver loop()
 static bool     _finRotando            = false;
 static bool     _finRotandoMuestraTexto = false;   // false=marcador, true=texto
 static uint32_t _finRotandoUltimoCambio = 0;
-
-// Muestra "Preparense X y Y" con los próximos jugadores del torneo, si corresponde
-static void anunciarProximosTorneo() {
-    static char anuncio[64];   // MD_Parola guarda el puntero, no una copia — tiene que ser estático
-    char nombres[40];
-    if (!torneoProximosNombres(nombres, sizeof(nombres))) return;
-    snprintf(anuncio, sizeof(anuncio), "%s %s", config.textoPreparense, nombres);
-    displayTexto(anuncio, config.velocidadScroll);
-}
 
 // Llamado desde WebConfig antes de arrancar/reanudar un partido por web — evita la
 // misma carrera que el botón del encoder (ver _finGolPendiente/_finSinGolPendiente arriba)
@@ -315,8 +301,7 @@ void loop() {
         vozPitidoFinal();
         comentaristaFinalPartido(partido);
         displayGanador(_finGolGanador);
-        if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
-        else                                             _jugarDeNuevoPendiente = true;
+        _jugarDeNuevoPendiente = true;
     }
 
     // ---- Fin de partido sin gol (por tiempo, o "Terminar partido" desde la web):
@@ -329,19 +314,11 @@ void loop() {
         vozPitidoFinal();
         comentaristaFinalPartido(partido);
         displayGanador(_finSinGolGanador);
-        if (torneo.activo && torneo.partidoEnJuego >= 0) _torneoAnuncioPendiente = true;
-        else                                             _jugarDeNuevoPendiente = true;
+        _jugarDeNuevoPendiente = true;
         Serial.println("\n[JUEGO] Cierre de partido disparado (pitido/comentario final)");
     }
 
-    // ---- Torneo: anuncia a los próximos jugadores una vez que terminó de
-    //     scrollear el "Fin! Ganador..." ----
-    if (_torneoAnuncioPendiente && !displayEnScroll()) {
-        _torneoAnuncioPendiente = false;
-        anunciarProximosTorneo();
-    }
-
-    // ---- Sin torneo: invita a jugar de nuevo una vez que terminó de scrollear
+    // ---- Invita a jugar de nuevo una vez que terminó de scrollear
     //     el "Fin! Ganador...", y arranca la rotación resultado ↔ texto ----
     if (_jugarDeNuevoPendiente && !displayEnScroll()) {
         _jugarDeNuevoPendiente = false;
@@ -351,7 +328,7 @@ void loop() {
         _finRotandoUltimoCambio = millis();
     }
 
-    // ---- Partido terminado (sin torneo): rota entre el resultado y "jugar de
+    // ---- Partido terminado: rota entre el resultado y "jugar de
     //     nuevo" cada intervaloDisplay segundos, hasta que arranque el próximo ----
     if (_finRotando && !reposoActivo()) {
         if (!partido.terminado) {

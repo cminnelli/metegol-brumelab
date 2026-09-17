@@ -2,7 +2,6 @@
 #include "AudioVoz.h"
 #include "AudioAmbiente.h"
 #include "Comentarista.h"
-#include "Torneo.h"
 #include "Display.h"
 #include "Reposo.h"
 #include <Arduino.h>
@@ -148,7 +147,6 @@ static void cargarConfig() {
     strlcpy(config.textoGanadorCeleste, prefs.getString("txtGC",   "Fin! Ganador Celeste!").c_str(),   sizeof(config.textoGanadorCeleste));
     strlcpy(config.textoGanadorBlanco,  prefs.getString("txtGB",   "Fin! Ganador Blanco!").c_str(),    sizeof(config.textoGanadorBlanco));
     strlcpy(config.textoEmpate,         prefs.getString("txtEmp",  "Fin! Empate!").c_str(),            sizeof(config.textoEmpate));
-    strlcpy(config.textoPreparense,     prefs.getString("txtPrep", "Preparense").c_str(),              sizeof(config.textoPreparense));
     strlcpy(config.textoJugarDeNuevo,   prefs.getString("txtJDN",  "Presiona para jugar de nuevo!").c_str(), sizeof(config.textoJugarDeNuevo));
     strlcpy(config.textoReposo,         prefs.getString("txtReposo", "MAKERGOL - Toca para jugar!").c_str(), sizeof(config.textoReposo));
 
@@ -273,7 +271,6 @@ static void guardarConfig() {
     prefs.putString("txtGC",   config.textoGanadorCeleste);
     prefs.putString("txtGB",   config.textoGanadorBlanco);
     prefs.putString("txtEmp",  config.textoEmpate);
-    prefs.putString("txtPrep", config.textoPreparense);
     prefs.putString("txtJDN",  config.textoJugarDeNuevo);
     prefs.putString("txtReposo", config.textoReposo);
 
@@ -506,27 +503,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
   .tab-panel { animation: fadeIn .18s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-  .torneo-setup { max-width: 460px; margin: 0 auto; }
-  .torneo-setup .names { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
-  .torneo-setup input[type=text] { width: 100%; padding: 10px 12px; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .88rem; outline: none; }
-  .torneo-setup input[type=text]:focus { border-color: var(--accent); }
-  .btn-primary { width: 100%; padding: 13px; background: var(--accent); border: none; border-radius: 24px; color: #04240f; font-weight: 700; font-size: .88rem; letter-spacing: .5px; cursor: pointer; }
-  .btn-secondary { padding: 8px 20px; background: transparent; border: 1.5px solid var(--border); border-radius: 20px; color: var(--muted); font-weight: 700; font-size: .76rem; cursor: pointer; }
-  .btn-ghost-danger { padding: 8px 20px; background: transparent; border: 1.5px solid rgba(239,68,68,.4); border-radius: 20px; color: #ef4444; font-weight: 700; font-size: .76rem; cursor: pointer; }
   .grupo-titulo { font-size: .68rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--purple); margin: 18px 0 8px; }
   .grupo-titulo:first-child { margin-top: 0; }
-  .partidos-lista { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
-  .partido-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; font-size: .84rem; }
-  .partido-row .vs { color: var(--muted); font-size: .74rem; text-align: center; flex: 1; }
-  .partido-row .res { font-weight: 700; color: var(--accent); }
-  .btn-jugar { padding: 6px 16px; background: rgba(34,197,94,.12); border: 1px solid var(--accent); border-radius: 16px; color: var(--accent); font-weight: 700; font-size: .74rem; cursor: pointer; white-space: nowrap; }
-  .en-juego-banner { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; text-align: center; }
-  .en-juego-banner b { color: var(--orange); }
-  .ronda-titulo { font-size: .68rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 18px 0 8px; }
-  .ronda-titulo:first-child { margin-top: 0; }
-  .campeon-banner { text-align: center; padding: 28px 16px; }
-  .campeon-banner .trofeo { font-size: 2.6rem; }
-  .campeon-banner .nombre { font-size: 1.4rem; font-weight: 800; color: var(--accent); margin-top: 6px; }
   .empty-hint { text-align: center; color: var(--muted); font-size: .84rem; padding: 30px 10px; }
 </style>
 </head>
@@ -539,7 +517,6 @@ static const char HTML[] PROGMEM = R"rawhtml(
 
 <nav class="tabs">
   <button type="button" class="tab-btn active" id="tabbtn-partido" onclick="showTab('partido')">Partido</button>
-  <button type="button" class="tab-btn" id="tabbtn-torneo" onclick="showTab('torneo')">Torneo</button>
   <button type="button" class="tab-btn" id="tabbtn-ajustes" onclick="showTab('ajustes')">Ajustes</button>
 </nav>
 
@@ -585,65 +562,6 @@ static const char HTML[] PROGMEM = R"rawhtml(
     <button id="btn-stop"    class="btn-stop"    onclick="pararPartido()">⏹ Terminar partido</button>
   </div>
 </div>
-</section>
-
-<section id="tab-torneo" class="tab-panel" style="display:none">
-
-<div class="card" id="torneo-setup-card">
-  <h2>🏆 Nuevo torneo</h2>
-  <div class="torneo-setup">
-    <div class="field">
-      <label>Cantidad de jugadores <b id="tn">4</b></label>
-      <input type="range" id="tCant" min="2" max="16" value="4" oninput="sl(this,'tn');torneoCantidadCambio(this.value)">
-    </div>
-    <div class="field">
-      <label>Grupos <b id="tg">1</b></label>
-      <input type="range" id="tGrupos" min="1" max="4" value="1" oninput="sl(this,'tg')">
-    </div>
-    <div class="names" id="torneo-nombres"></div>
-    <button type="button" class="btn-primary" onclick="crearTorneo()">Armar torneo</button>
-  </div>
-</div>
-
-<div id="torneo-activo" style="display:none">
-  <div class="card cg" id="torneo-en-juego" style="display:none">
-    <div class="en-juego-banner">
-      <span id="en-juego-txt"></span><br>
-      <button type="button" class="btn-jugar" style="margin-top:8px" onclick="showTab('partido')">Ir a la mesa 🎮</button>
-      <button type="button" class="btn-jugar" id="btn-confirmar-torneo" style="margin-top:8px;display:none" onclick="confirmarTorneo()">Confirmar resultado ✓</button>
-    </div>
-  </div>
-
-  <div class="card cg" id="torneo-proximo-card" style="display:none">
-    <h2>🎮 Próximo partido</h2>
-    <p style="font-size:1rem;text-align:center;margin-bottom:4px"><b id="proximo-txt"></b></p>
-    <p style="font-size:.78rem;color:var(--muted);text-align:center;margin-bottom:14px" id="despues-txt"></p>
-    <button type="button" class="btn-primary" onclick="jugarProximo()">¡Jugar! 🎮</button>
-  </div>
-
-  <div class="card" id="torneo-grupos-card">
-    <h2>📋 Fase de grupos</h2>
-    <div id="torneo-grupos"></div>
-  </div>
-
-  <div class="card cg" id="torneo-ko-card" style="display:none">
-    <h2>⚔️ Eliminación directa</h2>
-    <div id="torneo-ko"></div>
-  </div>
-
-  <div class="card cr" id="torneo-campeon-card" style="display:none">
-    <div class="campeon-banner">
-      <div class="trofeo">🏆</div>
-      <div>Campeón del torneo</div>
-      <div class="nombre" id="torneo-campeon-nombre"></div>
-    </div>
-  </div>
-
-  <div style="text-align:center;padding:6px 0 2px">
-    <button type="button" class="btn-ghost-danger" onclick="cancelarTorneo()">Cancelar torneo</button>
-  </div>
-</div>
-
 </section>
 
 <section id="tab-ajustes" class="tab-panel" style="display:none">
@@ -730,8 +648,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
       </div>
       <div id="fg-otros" class="farola-grupo" style="display:none">
         <div class="field"><label>Al bootear el ESP32</label><input class="ti" type="text" name="txtBoot" maxlength="18" value="%TXT_BOOT%"></div>
-        <div class="field"><label>Anuncio próximo torneo (prefijo)</label><input class="ti" type="text" name="txtPrep" maxlength="18" value="%TXT_PREP%"></div>
-        <div class="field"><label>Después del ganador (sin torneo)</label><input class="ti" type="text" name="txtJDN" maxlength="30" value="%TXT_JDN%"></div>
+        <div class="field"><label>Después del ganador</label><input class="ti" type="text" name="txtJDN" maxlength="30" value="%TXT_JDN%"></div>
       </div>
     </div>
   </div>
@@ -782,6 +699,23 @@ static const char HTML[] PROGMEM = R"rawhtml(
         </div>
         <button type="button" onclick="agregarRed()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:10px;color:#04240f;font-weight:700;font-size:.88rem;cursor:pointer">Guardar y conectar</button>
         <div id="wifi-msg" style="margin-top:10px;text-align:center;min-height:18px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="acc" data-acc="info-encoder">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">🎛</span>
+      <span class="acc-txt"><span class="acc-title">Control por la perilla</span><span class="acc-sub">Cómo se juega desde la mesa, sin el celular</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body">
+      <div style="display:flex;flex-direction:column;gap:14px;font-size:.8rem;line-height:1.5;color:var(--text)">
+        <div><b style="color:var(--accent)">Girar</b> — antes de arrancar un partido, elegí si se juega por goles o por tiempo.</div>
+        <div><b style="color:var(--accent)">Un click</b> — arranca el partido. Si ya está jugando, lo pausa; si está pausado, lo reanuda; y si acaba de terminar, arranca uno nuevo.</div>
+        <div><b style="color:var(--accent)">Doble click</b> — cancela el partido en curso y vuelve a la pantalla de espera.</div>
+        <div><b style="color:var(--accent)">Mantener 2 segundos</b> — reinicia el equipo, como apagarlo y prenderlo de nuevo.</div>
+        <div><b style="color:var(--accent)">💤 Modo reposo</b> — si nadie juega por un rato, la pantalla y el wifi se apagan solos para ahorrar batería. Un click de la perilla despierta todo de nuevo.</div>
       </div>
     </div>
   </div>
@@ -1207,12 +1141,11 @@ static const char HTML[] PROGMEM = R"rawhtml(
   });
 
   function showTab(name){
-    ['partido','torneo','ajustes'].forEach(t=>{
+    ['partido','ajustes'].forEach(t=>{
       document.getElementById('tab-'+t).style.display = t===name ? '' : 'none';
       document.getElementById('tabbtn-'+t).classList.toggle('active', t===name);
     });
     document.getElementById('fab-play').style.display = name==='partido' ? 'none' : 'flex';
-    if(name==='torneo') actualizarTorneo();
   }
   function quickPlay(){
     if(_fabAccion==='pausar'){ pausarPartido(); return; }
@@ -1244,134 +1177,6 @@ static const char HTML[] PROGMEM = R"rawhtml(
     }
   }catch(e){}
 
-  function torneoRenderNombres(n){
-    const wrap=document.getElementById('torneo-nombres');
-    const prevVals=Array.from(wrap.querySelectorAll('input')).map(i=>i.value);
-    wrap.innerHTML='';
-    for(let i=0;i<n;i++){
-      const inp=document.createElement('input');
-      inp.type='text'; inp.placeholder='Jugador '+(i+1); inp.value=prevVals[i]||'';
-      wrap.appendChild(inp);
-    }
-  }
-  function torneoCantidadCambio(v){
-    document.getElementById('tn').textContent=v;
-    const n=parseInt(v);
-    const gSlider=document.getElementById('tGrupos');
-    gSlider.max=Math.max(1,Math.min(4,Math.floor(n/2)));
-    if(parseInt(gSlider.value)>parseInt(gSlider.max))gSlider.value=gSlider.max;
-    document.getElementById('tg').textContent=gSlider.value;
-    torneoRenderNombres(n);
-  }
-  torneoRenderNombres(4);
-
-  function crearTorneo(){
-    const n=parseInt(document.getElementById('tCant').value);
-    const nGrupos=parseInt(document.getElementById('tGrupos').value);
-    const nombres=Array.from(document.querySelectorAll('#torneo-nombres input')).map(i=>i.value.trim());
-    const body=new URLSearchParams({n,nGrupos});
-    nombres.forEach((nm,i)=>body.append('nombre'+i,nm));
-    fetch('/torneo/crear',{method:'POST',body}).then(r=>r.json()).then(j=>{
-      if(j.ok){actualizarTorneo();return;}
-      if(j.error==='partido_en_curso')popup('Hay un partido individual en curso — cancelalo antes de armar un torneo.');
-      else if(j.error==='torneo_activo')popup('Ya hay un torneo en curso — cancelalo antes de armar uno nuevo.');
-      else popup('No se pudo armar el torneo.');
-    });
-  }
-  function jugarProximo(){
-    fetch('/torneo/jugarProximo',{method:'POST'}).then(r=>r.json()).then(j=>{
-      if(!j.ok) return;
-      iniciarPartido();
-      showTab('partido');
-      actualizarTorneo();
-    });
-  }
-  function confirmarTorneo(){
-    fetch('/torneo/confirmar',{method:'POST'}).then(r=>r.json()).then(()=>actualizarTorneo());
-  }
-  async function cancelarTorneo(){
-    if(!(await popup('¿Cancelar el torneo en curso?',{confirm:true,okText:'Cancelar torneo',danger:true})))return;
-    fetch('/torneo/cancelar',{method:'POST'}).then(()=>actualizarTorneo());
-  }
-
-  function actualizarTorneo(){
-    fetch('/torneo/estado').then(r=>r.json()).then(d=>{
-      document.getElementById('torneo-setup-card').style.display=d.activo?'none':'';
-      document.getElementById('torneo-activo').style.display=d.activo?'':'none';
-      if(!d.activo)return;
-
-      document.getElementById('torneo-campeon-card').style.display=d.fase===2?'':'none';
-      if(d.fase===2)document.getElementById('torneo-campeon-nombre').textContent=d.campeon||'';
-      document.getElementById('torneo-ko-card').style.display=d.fase>=1?'':'none';
-      document.getElementById('torneo-grupos-card').style.display=d.fase===0?'':'none';
-
-      const ej=document.getElementById('torneo-en-juego');
-      const btnConf=document.getElementById('btn-confirmar-torneo');
-      const pc=document.getElementById('torneo-proximo-card');
-      if(d.partidoEnJuego>=0){
-        ej.style.display='';
-        pc.style.display='none';
-        const lista=d.enJuegoEsKO?d.partidosKO:d.partidosGrupo;
-        const m=lista.find(x=>x.idx===d.partidoEnJuego);
-        document.getElementById('en-juego-txt').innerHTML=m?('En juego: <b>'+m.pA+'</b> vs <b>'+(m.pB||'???')+'</b>'):'';
-        btnConf.style.display=(window._partidoTerminado===true)?'inline-block':'none';
-      }else{
-        ej.style.display='none';
-        if(d.proximo){
-          pc.style.display='';
-          document.getElementById('proximo-txt').textContent=d.proximo.pA+' vs '+d.proximo.pB;
-          document.getElementById('despues-txt').textContent=d.despues?('Después: '+d.despues.pA+' vs '+d.despues.pB):'';
-        }else{
-          pc.style.display='none';
-        }
-      }
-
-      const gWrap=document.getElementById('torneo-grupos');
-      let gHtml='';
-      d.grupos.forEach((g,gi)=>{
-        gHtml+='<p class="grupo-titulo">Grupo '+String.fromCharCode(65+gi)+'</p>';
-        gHtml+='<table class="rt"><thead><tr><th>Jugador</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>DIF</th><th>Pts</th></tr></thead><tbody>';
-        g.tabla.forEach(f=>{
-          gHtml+='<tr><td>'+f.nombre+'</td><td>'+f.pj+'</td><td>'+f.pg+'</td><td>'+f.pe+'</td><td>'+f.pp+'</td><td>'+f.dif+'</td><td><b>'+f.pts+'</b></td></tr>';
-        });
-        gHtml+='</tbody></table>';
-      });
-      gHtml+='<p class="grupo-titulo">Partidos pendientes</p><div class="partidos-lista">';
-      const pendientes=d.partidosGrupo.filter(m=>!m.jugado);
-      if(pendientes.length===0)gHtml+='<p class="empty-hint">Fase de grupos completa</p>';
-      pendientes.forEach(m=>{
-        gHtml+='<div class="partido-row"><span>'+m.pA+'</span><span class="vs">vs</span><span>'+m.pB+'</span></div>';
-      });
-      gHtml+='</div><p class="grupo-titulo">Jugados</p><div class="partidos-lista">';
-      const jugados=d.partidosGrupo.filter(m=>m.jugado);
-      if(jugados.length===0)gHtml+='<p class="empty-hint">Todavía no se jugó ninguno</p>';
-      jugados.forEach(m=>{
-        gHtml+='<div class="partido-row"><span>'+m.pA+'</span><span class="res">'+m.golA+' - '+m.golB+'</span><span>'+m.pB+'</span></div>';
-      });
-      gHtml+='</div>';
-      gWrap.innerHTML=gHtml;
-
-      const koWrap=document.getElementById('torneo-ko');
-      let koHtml='';
-      const rondas=[...new Set(d.partidosKO.map(m=>m.ronda))].sort((a,b)=>a-b);
-      rondas.forEach(r=>{
-        const nombreRonda=(r===rondas[rondas.length-1])?'Final':('Ronda '+(r+1));
-        koHtml+='<p class="ronda-titulo">'+nombreRonda+'</p><div class="partidos-lista">';
-        d.partidosKO.filter(m=>m.ronda===r).forEach(m=>{
-          if(m.pB===null){
-            koHtml+='<div class="partido-row"><span>'+m.pA+'</span><span class="vs">pasa de ronda (bye)</span><span></span></div>';
-          }else if(m.jugado){
-            koHtml+='<div class="partido-row"><span>'+m.pA+'</span><span class="res">'+m.golA+' - '+m.golB+'</span><span>'+m.pB+'</span></div>';
-          }else{
-            koHtml+='<div class="partido-row"><span>'+m.pA+'</span><span class="vs">vs</span><span>'+m.pB+'</span></div>';
-          }
-        });
-        koHtml+='</div>';
-      });
-      koWrap.innerHTML=koHtml||'<p class="empty-hint">Todavía no hay cuadro de eliminación</p>';
-    }).catch(()=>{});
-  }
-  actualizarTorneo();setInterval(actualizarTorneo,3000);
 </script>
 </body>
 </html>
@@ -1402,7 +1207,6 @@ static String buildPage() {
     html.replace("%TXT_GC%",   config.textoGanadorCeleste);
     html.replace("%TXT_GB%",   config.textoGanadorBlanco);
     html.replace("%TXT_EMP%",  config.textoEmpate);
-    html.replace("%TXT_PREP%", config.textoPreparense);
     html.replace("%TXT_JDN%",  config.textoJugarDeNuevo);
     html.replace("%TXT_REPOSO%", config.textoReposo);
     html.replace("%STBY_TO%",      String(config.standbyTimeoutSegs));
@@ -1520,7 +1324,6 @@ static void handleSave() {
     if (server.hasArg("txtGC"))   strlcpy(config.textoGanadorCeleste, server.arg("txtGC").c_str(),   sizeof(config.textoGanadorCeleste));
     if (server.hasArg("txtGB"))   strlcpy(config.textoGanadorBlanco,  server.arg("txtGB").c_str(),   sizeof(config.textoGanadorBlanco));
     if (server.hasArg("txtEmp"))  strlcpy(config.textoEmpate,         server.arg("txtEmp").c_str(),  sizeof(config.textoEmpate));
-    if (server.hasArg("txtPrep")) strlcpy(config.textoPreparense,     server.arg("txtPrep").c_str(), sizeof(config.textoPreparense));
     if (server.hasArg("txtJDN"))  strlcpy(config.textoJugarDeNuevo,   server.arg("txtJDN").c_str(),  sizeof(config.textoJugarDeNuevo));
     if (server.hasArg("txtReposo")) strlcpy(config.textoReposo,      server.arg("txtReposo").c_str(), sizeof(config.textoReposo));
     // Reposo
@@ -1752,75 +1555,12 @@ static void handleConfigBrumeGet() {
     server.send(200, "application/json", buf);
 }
 
-static void handleTorneoCrear() {
-    // No se puede armar un torneo nuevo con un partido individual en curso, ni
-    // pisar un torneo que ya está activo — hay que cancelarlo primero.
-    if (_partido && (_partido->activo || _partido->pausado)) {
-        server.send(409, "application/json", "{\"ok\":false,\"error\":\"partido_en_curso\"}");
-        return;
-    }
-    if (torneo.activo) {
-        server.send(409, "application/json", "{\"ok\":false,\"error\":\"torneo_activo\"}");
-        return;
-    }
-    uint8_t n = constrain(server.arg("n").toInt(), 2, TORNEO_MAX_JUG);
-    uint8_t nGrupos = server.arg("nGrupos").toInt();
-    String nombres[TORNEO_MAX_JUG];
-    for (uint8_t i = 0; i < n; i++) {
-        String key = "nombre" + String(i);
-        nombres[i] = server.hasArg(key) ? server.arg(key) : "";
-        nombres[i].trim();
-        if (nombres[i].isEmpty()) nombres[i] = "Jugador " + String(i + 1);
-    }
-    bool ok = torneoCrear(nombres, n, nGrupos);
-    Serial.printf("\n[Torneo] Crear (%d jugadores, %d grupos) — %s\n", n, nGrupos, ok ? "ok" : "error");
-    server.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
-}
-
-static void handleTorneoEstado() {
-    server.send(200, "application/json", torneoEstadoJSON());
-}
-
-// El orden de partidos lo arma el sistema — el usuario solo confirma "¡Jugar!"
-// sobre el próximo que corresponde, nunca elige cuál.
-static void handleTorneoJugarProximo() {
-    bool ok = torneoJugarProximo();
-    if (ok) {
-        uint8_t idx = torneo.partidoEnJuego;
-        uint8_t pA, pB;
-        if (torneo.enJuegoEsKO) { pA = torneo.partidosKO[idx].pA;    pB = torneo.partidosKO[idx].pB; }
-        else                    { pA = torneo.partidosGrupo[idx].pA; pB = torneo.partidosGrupo[idx].pB; }
-        static char texto[40];   // MD_Parola guarda el puntero, no una copia — tiene que ser estático
-        snprintf(texto, sizeof(texto), "%s vs %s",
-            torneo.participantes[pA].nombre, torneo.participantes[pB].nombre);
-        displayTexto(texto, config.velocidadScroll);
-        Serial.printf("\n[Torneo] Jugar %s vs %s\n",
-            torneo.participantes[pA].nombre, torneo.participantes[pB].nombre);
-    }
-    server.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
-}
-
-static void handleTorneoConfirmar() {
-    uint8_t golA = _partido ? _partido->goles[0] : 0;
-    uint8_t golB = _partido ? _partido->goles[1] : 0;
-    bool ok = torneoConfirmar(golA, golB);
-    Serial.printf("\n[Torneo] Confirmar resultado %d-%d — %s\n", golA, golB, ok ? "ok" : "error");
-    server.send(ok ? 200 : 400, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
-}
-
-static void handleTorneoCancelar() {
-    torneoCancelar();
-    Serial.println("\n[Torneo] Cancelado");
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 void webConfigInit(Partido* p) {
     _partido = p;
     cargarConfig();
     cargarWiFiCreds();
-    torneoInit();
 
     WiFi.setSleep(false);
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
@@ -1865,12 +1605,6 @@ void webConfigInit(Partido* p) {
     server.on("/pause",  HTTP_POST, handlePause);
     server.on("/stop",   HTTP_POST, handleStop);
     server.on("/configBrume", HTTP_GET, handleConfigBrumeGet);
-
-    server.on("/torneo/crear",     HTTP_POST, handleTorneoCrear);
-    server.on("/torneo/estado",    HTTP_GET,  handleTorneoEstado);
-    server.on("/torneo/jugarProximo", HTTP_POST, handleTorneoJugarProximo);
-    server.on("/torneo/confirmar", HTTP_POST, handleTorneoConfirmar);
-    server.on("/torneo/cancelar",  HTTP_POST, handleTorneoCancelar);
 
     server.on("/wifiStatus", HTTP_GET, [](){
         String json = "{\"connected\":";
