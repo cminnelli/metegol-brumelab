@@ -38,6 +38,11 @@ static uint32_t _staStartMs  = 0;
 static bool     _staGaveUp   = false;
 static bool     _wifiApagada = false;   // true mientras dura el reposo — ver webConfigApagarWifi()
 
+// El punto de acceso propio ("Makergol") queda siempre prendido junto con STA
+// (WIFI_AP_STA) — se probó apagarlo apenas STA conecta para ahorrar recursos,
+// pero cambiar WiFi.mode() dinámicamente después del boot rompía el mDNS
+// (makergol.local dejaba de responder, confirmado en la mesa) — se volvió
+// atrás. Ver git log de este archivo si se quiere retomar esa idea más adelante.
 static void anunciarSTA() {
     if (_staAnunciado) return;
     _staAnunciado = true;
@@ -152,8 +157,8 @@ static void cargarConfig() {
     config.reposoBrillo        = prefs.getUChar("stbyBrillo",   0);
 
     // Comentarista — thresholds
-    config.intervaloComentariosMin = prefs.getUShort("intervComMin",  12);
-    config.intervaloComentariosMax = prefs.getUShort("intervComMax",  35);
+    config.intervaloComentariosMin = prefs.getUShort("intervComMin",  10);
+    config.intervaloComentariosMax = prefs.getUShort("intervComMax",  15);
     config.intervaloStats          = prefs.getUShort("intervStats",    5);
     config.goleadaDiff             = prefs.getUChar("goleadaDiff",    3);  // 3+ goles de diff = goleada
     config.calienteGoles           = prefs.getUChar("calienteGol",    4);  // 4+ goles totales = puede ser caliente
@@ -475,6 +480,18 @@ static const char HTML[] PROGMEM = R"rawhtml(
   }
   #toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #04240f; padding: 10px 28px; border-radius: 30px; font-weight: 700; font-size: .86rem; transition: transform .26s; pointer-events: none; white-space: nowrap; z-index: 9999; }
   #toast.show { transform: translateX(-50%) translateY(0); }
+  .pu-ov { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; opacity: 0; transition: opacity .15s; }
+  .pu-ov.show { opacity: 1; }
+  .pu-box { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px 20px; max-width: 320px; width: 100%; text-align: center; transform: scale(.94); transition: transform .15s; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+  .pu-ov.show .pu-box { transform: scale(1); }
+  .pu-msg { font-size: .88rem; color: var(--text); line-height: 1.45; margin-bottom: 18px; }
+  .pu-btns { display: flex; gap: 8px; }
+  .pu-btn { flex: 1; padding: 10px; border-radius: 9px; font-weight: 700; font-size: .82rem; cursor: pointer; border: none; }
+  .pu-btn.ok { background: var(--accent); color: #04240f; }
+  .pu-btn.ok.danger { background: var(--pink); }
+  .pu-btn.cancel { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .spin { display: inline-block; animation: pu-spin 1s linear infinite; }
+  @keyframes pu-spin { to { transform: rotate(360deg); } }
   #fab-save { position: fixed; bottom: 22px; right: 22px; padding: 13px 24px; background: var(--accent); border: none; border-radius: 50px; color: #04240f; font-weight: 700; font-size: .82rem; letter-spacing: .5px; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,.35); z-index: 9998; transition: transform .12s; }
   #fab-save:hover { transform: scale(1.05); }
   #fab-save:active { transform: scale(.96); }
@@ -730,6 +747,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <input type="range" name="standbyTimeoutSegs" min="60" max="1800" step="30" value="%STBY_TO%" oninput="sl(this,'sty')">
         <p style="font-size:.68rem;color:var(--muted);margin-top:4px">Segundos sin actividad (sin partido en curso) antes de apagar la pantalla LED y wifi. Un click del encoder en la mesa lo despierta.</p>
       </div>
+      <button type="button" onclick="forzarReposo()" style="width:100%;padding:9px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-weight:600;font-size:.82rem;cursor:pointer;margin-top:4px">💤 Apagar wifi y pantalla ahora</button>
+      <p style="font-size:.68rem;color:var(--muted);margin-top:6px">No borra la red guardada — solo apaga la radio ya mismo, sin esperar el timeout. Se despierta con un click del encoder en la mesa.</p>
     </div>
   </div>
 
@@ -740,22 +759,32 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <span class="acc-chev">⌄</span>
     </button>
     <div class="acc-body" id="wifi-card">
-      <div id="wifi-conn-status" style="display:none;background:rgba(105,240,174,.06);border:1px solid rgba(105,240,174,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center">
-        <p style="font-size:.82rem;color:var(--muted)">Conectado a <b id="ssid-label" style="color:var(--green)"></b></p>
-        <a href="http://makergol.local" target="_blank" style="font-size:.78rem;color:var(--accent)">🌐 makergol.local</a>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span id="wifi-status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0"></span>
+        <p id="wifi-status-txt" style="font-size:.86rem;color:var(--text);font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Verificando...</p>
       </div>
+
       <div id="saved-nets" style="margin-bottom:14px"></div>
-      <p class="sec-lbl" style="color:var(--green)">Agregar red WiFi</p>
-      <div class="field">
-        <label>SSID</label>
-        <input type="text" id="wSSID" placeholder="Nombre de la red" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
+
+      <p class="sec-lbl" style="color:var(--green)">Conectar a tu WiFi</p>
+      <p style="font-size:.72rem;color:var(--muted);margin:2px 0 10px">Guardá la red de tu casa o local para entrar a este panel directo desde el celu, sin cables.</p>
+      <button type="button" onclick="escanearRedes()" id="btn-scan" style="width:100%;padding:9px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-weight:600;font-size:.82rem;cursor:pointer">🔍 Buscar redes cercanas</button>
+      <div id="scan-resultados" style="max-height:200px;overflow-y:auto"></div>
+      <button type="button" id="btn-manual" onclick="mostrarManual()" style="display:none;width:100%;padding:9px;background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-weight:600;font-size:.78rem;cursor:pointer;margin-top:8px">✏️ No encuentro mi red — ingresar a mano</button>
+
+      <div id="scan-manual" style="display:none;margin-top:10px">
+        <div class="field">
+          <label>SSID</label>
+          <input type="text" id="wSSID" placeholder="Nombre de la red" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
+        </div>
+        <div class="field">
+          <label>Contraseña</label>
+          <input type="password" id="wPass" placeholder="••••••" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
+        </div>
+        <button type="button" onclick="agregarRed()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:10px;color:#04240f;font-weight:700;font-size:.88rem;cursor:pointer">Guardar y conectar</button>
+        <div id="wifi-msg" style="margin-top:10px;text-align:center;min-height:18px"></div>
       </div>
-      <div class="field">
-        <label>Contraseña</label>
-        <input type="password" id="wPass" placeholder="••••••" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
-      </div>
-      <button type="button" onclick="agregarRed()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:10px;color:#04240f;font-weight:700;font-size:.88rem;cursor:pointer">Guardar red</button>
-      <div id="wifi-msg" style="font-size:.78rem;color:var(--muted);margin-top:10px;text-align:center;min-height:18px"></div>
+      <p style="font-size:.68rem;color:var(--muted);margin-top:14px">El punto de acceso propio "Makergol" siempre está disponible como respaldo, aunque ya esté conectado a una red.</p>
     </div>
   </div>
 
@@ -921,6 +950,24 @@ static const char HTML[] PROGMEM = R"rawhtml(
 <button id="fab-play" onclick="quickPlay()">▶ Jugar</button>
 
 <script>
+  function popup(msg,opts){
+    opts=opts||{};
+    return new Promise(resolve=>{
+      const ov=document.createElement('div');
+      ov.className='pu-ov';
+      ov.innerHTML='<div class="pu-box"><p class="pu-msg"></p><div class="pu-btns">'+
+        (opts.confirm?'<button class="pu-btn cancel" data-r="0">'+(opts.cancelText||'Cancelar')+'</button>':'')+
+        '<button class="pu-btn ok'+(opts.danger?' danger':'')+'" data-r="1">'+(opts.okText||'Entendido')+'</button></div></div>';
+      ov.querySelector('.pu-msg').textContent=msg;
+      function cerrar(r){ov.classList.remove('show');setTimeout(()=>{try{ov.remove();}catch(e){}},150);resolve(r);}
+      // Engancha los clicks ANTES de tocar el DOM real o timers — si algo de
+      // acá abajo llegara a fallar en algún navegador raro, los botones ya
+      // quedan funcionando igual en vez de silenciosamente muertos.
+      ov.querySelectorAll('.pu-btn').forEach(b=>b.onclick=()=>cerrar(b.dataset.r==='1'));
+      document.body.appendChild(ov);
+      setTimeout(()=>ov.classList.add('show'),10);
+    });
+  }
   function sl(el,id){
     document.getElementById(id).textContent=el.value;
     el.style.setProperty('--p',((el.value-el.min)/(el.max-el.min)*100)+'%');
@@ -937,18 +984,30 @@ static const char HTML[] PROGMEM = R"rawhtml(
   setModo(parseInt(document.getElementById('modoJuego').value));
   function actualizarEstadoWiFi(){
     fetch('/wifiStatus').then(r=>r.json()).then(d=>{
-      const cs=document.getElementById('wifi-conn-status');
-      cs.style.display=d.connected?'block':'none';
-      if(d.connected)document.getElementById('ssid-label').textContent=d.ssid;
+      const txt=document.getElementById('wifi-status-txt');
+      const dot=document.getElementById('wifi-status-dot');
+      if(d.connected){
+        txt.innerHTML='Conectado a <b>'+d.ssid+'</b>';
+        dot.style.background='var(--green)';
+      } else if(d.apActiva){
+        txt.innerHTML='Sin red — Access Point activo';
+        dot.style.background='var(--accent)';
+      } else {
+        txt.textContent='Buscando red...';
+        dot.style.background='var(--muted)';
+      }
       const sn=document.getElementById('saved-nets');
       if(d.saved&&d.saved.length>0){
         sn.innerHTML='<p class="sec-lbl" style="color:var(--muted)">Redes guardadas ('+d.saved.length+'/3)</p>'+
-          d.saved.map((s,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:.84rem;color:${s===d.ssid?'var(--green)':'var(--text)'}">
-              ${s===d.ssid?'✓ ':''}<b>${s}</b>
-            </span>
-            <button onclick="eliminarRed(${i})" style="background:transparent;border:1px solid #f44336;color:#f44336;padding:3px 10px;border-radius:12px;font-size:.72rem;cursor:pointer">✕ borrar</button>
-          </div>`).join('');
+          d.saved.map((s,i)=>{
+            const activa=d.connected&&s===d.ssid;
+            return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:1rem;flex-shrink:0">📶</span>
+              <span style="flex:1;min-width:0;font-size:.84rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${s}</b></span>
+              <span style="flex-shrink:0;font-size:.63rem;font-weight:700;padding:3px 8px;border-radius:10px;${activa?'background:rgba(34,197,94,.15);color:var(--green)':'background:rgba(255,255,255,.06);color:var(--muted)'}">${activa?'CONECTADA':'GUARDADA'}</span>
+              <button onclick="eliminarRed(${i})" style="flex-shrink:0;background:transparent;border:1px solid #f44336;color:#f44336;padding:3px 9px;border-radius:12px;font-size:.68rem;cursor:pointer">✕</button>
+            </div>`;
+          }).join('');
       } else {
         sn.innerHTML='';
       }
@@ -958,25 +1017,75 @@ static const char HTML[] PROGMEM = R"rawhtml(
     const ssid=document.getElementById('wSSID').value.trim();
     const pass=document.getElementById('wPass').value;
     const msg=document.getElementById('wifi-msg');
-    if(!ssid){msg.style.color='var(--pink)';msg.textContent='Ingresá el SSID';return;}
-    msg.style.color='var(--accent)';msg.textContent='Guardando...';
+    if(!ssid){msg.innerHTML='<span style="font-size:.78rem;color:var(--pink)">Ingresá el SSID</span>';return;}
+    msg.innerHTML='<span style="font-size:.82rem;color:var(--accent)"><span class="spin">⏳</span> Conectando a <b>'+ssid+'</b>...</span>';
     fetch('/wifi',{method:'POST',body:new URLSearchParams({ssid,pass})}).then(r=>r.json()).then(()=>{
       document.getElementById('wSSID').value='';document.getElementById('wPass').value='';
       actualizarEstadoWiFi();
       let n=0;const t=setInterval(()=>{
-        n++;msg.textContent='Conectando'+'.'.repeat(n%4);
+        n++;
         fetch('/wifiStatus').then(r=>r.json()).then(d=>{
-          if(d.connected&&d.ssid===ssid){clearInterval(t);msg.style.color='var(--green)';msg.textContent='✓ Conectado a '+ssid;actualizarEstadoWiFi();}
-          else if(n>13){clearInterval(t);msg.style.color='var(--muted)';msg.textContent='Red guardada (no en rango ahora)';}
+          if(d.connected&&d.ssid===ssid){
+            clearInterval(t);
+            msg.innerHTML='<span style="font-size:.82rem;color:var(--green)">✓ Conectado a <b>'+ssid+'</b></span>';
+            actualizarEstadoWiFi();
+          } else if(n>13){
+            clearInterval(t);
+            msg.innerHTML='<span style="font-size:.78rem;color:var(--muted)">Red guardada (no en rango ahora)</span>';
+          }
         }).catch(()=>{});
       },1500);
-    }).catch(()=>{msg.style.color='var(--pink)';msg.textContent='Error';});
+    }).catch(()=>{msg.innerHTML='<span style="font-size:.78rem;color:var(--pink)">Error</span>';});
   }
-  function eliminarRed(idx){
-    if(!confirm('¿Borrar esta red WiFi guardada?'))return;
+  async function eliminarRed(idx){
+    if(!(await popup('¿Borrar esta red WiFi guardada?',{confirm:true,okText:'Borrar',danger:true})))return;
     fetch('/wifi-delete',{method:'POST',body:new URLSearchParams({idx})}).then(r=>r.json()).then(d=>{
-      if(d.ok)actualizarEstadoWiFi();
+      if(!d.ok)return;
+      actualizarEstadoWiFi();
+      if(d.eraConectada){
+        popup('Red eliminada. El dispositivo quedó sin conexión — conectate al punto de acceso "Makergol" para configurar otra red.');
+      }
     }).catch(()=>{});
+  }
+  async function forzarReposo(){
+    if(!(await popup('¿Apagar wifi y pantalla ahora? Se puede despertar con un click del encoder en la mesa.',{confirm:true,okText:'Apagar ahora'})))return;
+    fetch('/reposo-forzar',{method:'POST'}).then(r=>r.json()).then(d=>{
+      if(!d.ok)popup('No se puede apagar: hay un partido en curso o pausado.');
+    }).catch(()=>{});
+  }
+  function escanearRedes(){
+    const btn=document.getElementById('btn-scan');
+    const res=document.getElementById('scan-resultados');
+    btn.disabled=true;btn.textContent='Buscando...';
+    res.innerHTML='';
+    fetch('/wifi-scan-start',{method:'POST'}).then(()=>{
+      const poll=setInterval(()=>{
+        fetch('/wifi-scan-result').then(r=>r.json()).then(d=>{
+          if(d.status==='scanning')return;
+          clearInterval(poll);
+          btn.disabled=false;btn.textContent='🔍 Buscar redes cercanas';
+          document.getElementById('btn-manual').style.display='';
+          if(!d.networks||d.networks.length===0){
+            res.innerHTML='<p style="font-size:.78rem;color:var(--muted);text-align:center;padding:8px 0">No se encontraron redes cerca</p>';
+            return;
+          }
+          res.innerHTML=d.networks.map(n=>`<div onclick="elegirRed('${n.ssid.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:.82rem">
+            <span>${n.secure?'🔒 ':''}${n.ssid}</span>
+            <span style="color:var(--muted);font-size:.72rem">${n.rssi} dBm</span>
+          </div>`).join('');
+        }).catch(()=>{clearInterval(poll);btn.disabled=false;btn.textContent='🔍 Buscar redes cercanas';});
+      },1000);
+    }).catch(()=>{btn.disabled=false;btn.textContent='🔍 Buscar redes cercanas';});
+  }
+  function elegirRed(ssid){
+    document.getElementById('scan-manual').style.display='';
+    document.getElementById('wSSID').value=ssid;
+    document.getElementById('wPass').focus();
+  }
+  function mostrarManual(){
+    document.getElementById('scan-manual').style.display='';
+    document.getElementById('wSSID').value='';
+    document.getElementById('wSSID').focus();
   }
   actualizarEstadoWiFi();setInterval(actualizarEstadoWiFi,5000);
   const EC={
@@ -1076,16 +1185,16 @@ static const char HTML[] PROGMEM = R"rawhtml(
       else setTimeout(iniciarPartido,1000);  // cierre del partido anterior todavía pendiente — reintenta
     }).catch(()=>{});
   }
-  function reiniciarPartido(){
-    if(!confirm('¿Reiniciar el marcador a 0-0?'))return;
+  async function reiniciarPartido(){
+    if(!(await popup('¿Reiniciar el marcador a 0-0?',{confirm:true,okText:'Reiniciar'})))return;
     fetch('/start',{method:'POST',body:new URLSearchParams({nuevo:'1'})}).then(r=>r.json()).then(j=>{
       if(j.ok) actualizarMarcador();
       else setTimeout(reiniciarPartido,1000);
     }).catch(()=>{});
   }
   function pausarPartido(){fetch('/pause',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});}
-  function pararPartido(){
-    if(!confirm('¿Terminar el partido con el marcador actual?'))return;
+  async function pararPartido(){
+    if(!(await popup('¿Terminar el partido con el marcador actual?',{confirm:true,okText:'Terminar'})))return;
     fetch('/stop',{method:'POST'}).then(()=>actualizarMarcador()).catch(()=>{});
   }
   actualizarMarcador();setInterval(actualizarMarcador,3000);
@@ -1163,9 +1272,9 @@ static const char HTML[] PROGMEM = R"rawhtml(
     nombres.forEach((nm,i)=>body.append('nombre'+i,nm));
     fetch('/torneo/crear',{method:'POST',body}).then(r=>r.json()).then(j=>{
       if(j.ok){actualizarTorneo();return;}
-      if(j.error==='partido_en_curso')alert('Hay un partido individual en curso — cancelalo antes de armar un torneo.');
-      else if(j.error==='torneo_activo')alert('Ya hay un torneo en curso — cancelalo antes de armar uno nuevo.');
-      else alert('No se pudo armar el torneo.');
+      if(j.error==='partido_en_curso')popup('Hay un partido individual en curso — cancelalo antes de armar un torneo.');
+      else if(j.error==='torneo_activo')popup('Ya hay un torneo en curso — cancelalo antes de armar uno nuevo.');
+      else popup('No se pudo armar el torneo.');
     });
   }
   function jugarProximo(){
@@ -1179,8 +1288,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
   function confirmarTorneo(){
     fetch('/torneo/confirmar',{method:'POST'}).then(r=>r.json()).then(()=>actualizarTorneo());
   }
-  function cancelarTorneo(){
-    if(!confirm('¿Cancelar el torneo en curso?'))return;
+  async function cancelarTorneo(){
+    if(!(await popup('¿Cancelar el torneo en curso?',{confirm:true,okText:'Cancelar torneo',danger:true})))return;
     fetch('/torneo/cancelar',{method:'POST'}).then(()=>actualizarTorneo());
   }
 
@@ -1377,6 +1486,10 @@ static String buildPage() {
 
 static void handleRoot() {
     Serial.printf("\n[WEB] GET / — %s\n", server.client().remoteIP().toString().c_str());
+    // Sin esto el celular puede quedarse con una versión vieja del HTML/JS
+    // cacheada — cambios en el panel (como este) no se verían hasta limpiar
+    // caché a mano, algo que nadie va a pensar en hacer en la mesa.
+    server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     server.send(200, "text/html", buildPage());
 }
 
@@ -1763,6 +1876,7 @@ void webConfigInit(Partido* p) {
         json += WiFi.isConnected() ? "true" : "false";
         json += ",\"ssid\":\"" + WiFi.SSID() + "\"";
         json += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
+        json += ",\"apActiva\":" + String(_wifiApagada ? "false" : "true");
         json += ",\"saved\":[";
         for (uint8_t i = 0; i < _nNets; i++) {
             if (i) json += ",";
@@ -1770,6 +1884,56 @@ void webConfigInit(Partido* p) {
         }
         json += "]}";
         server.send(200, "application/json", json);
+    });
+
+    server.on("/wifi-scan-start", HTTP_POST, [](){
+        WiFi.scanDelete();
+        WiFi.scanNetworks(true);   // asíncrono, no bloquea el loop
+        server.send(200, "application/json", "{\"ok\":true}");
+    });
+
+    server.on("/wifi-scan-result", HTTP_GET, [](){
+        int16_t n = WiFi.scanComplete();
+        if (n == WIFI_SCAN_RUNNING || n == WIFI_SCAN_FAILED) {
+            server.send(200, "application/json", "{\"status\":\"scanning\"}");
+            return;
+        }
+        struct Encontrada { String ssid; int32_t rssi; bool secure; };
+        static Encontrada vistas[20];
+        uint8_t nVistas = 0;
+        for (int16_t i = 0; i < n && i < 40; i++) {
+            String ssid = WiFi.SSID(i);
+            if (ssid.isEmpty()) continue;
+            int32_t rssi  = WiFi.RSSI(i);
+            bool    seguro = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+            bool encontrada = false;
+            for (uint8_t j = 0; j < nVistas; j++) {
+                if (vistas[j].ssid == ssid) {
+                    encontrada = true;
+                    if (rssi > vistas[j].rssi) vistas[j].rssi = rssi;
+                    break;
+                }
+            }
+            if (!encontrada && nVistas < 20) vistas[nVistas++] = { ssid, rssi, seguro };
+        }
+        for (uint8_t i = 0; i < nVistas; i++) {
+            uint8_t mejor = i;
+            for (uint8_t j = i + 1; j < nVistas; j++)
+                if (vistas[j].rssi > vistas[mejor].rssi) mejor = j;
+            if (mejor != i) { Encontrada tmp = vistas[i]; vistas[i] = vistas[mejor]; vistas[mejor] = tmp; }
+        }
+        String json = "{\"status\":\"done\",\"networks\":[";
+        for (uint8_t i = 0; i < nVistas; i++) {
+            if (i) json += ",";
+            String ssidEsc = vistas[i].ssid;
+            ssidEsc.replace("\\", "\\\\");
+            ssidEsc.replace("\"", "\\\"");
+            json += "{\"ssid\":\"" + ssidEsc + "\",\"rssi\":" + String(vistas[i].rssi) +
+                    ",\"secure\":" + (vistas[i].secure ? "true" : "false") + "}";
+        }
+        json += "]}";
+        server.send(200, "application/json", json);
+        WiFi.scanDelete();
     });
 
     server.on("/wifi", HTTP_POST, [](){
@@ -1789,6 +1953,10 @@ void webConfigInit(Partido* p) {
     server.on("/wifi-delete", HTTP_POST, [](){
         uint8_t idx = (uint8_t)server.arg("idx").toInt();
         if (idx >= _nNets) { server.send(400, "application/json", "{\"error\":\"idx inválido\"}"); return; }
+        // Si es la red a la que estamos conectados ahora, la cortamos ya mismo en
+        // vez de esperar a que se caiga sola — evita quedar "conectado" un rato
+        // a una red que la persona ya borró a propósito.
+        bool eraConectada = WiFi.isConnected() && WiFi.SSID() == String(_staSSID[idx]);
         for (uint8_t i = idx; i < _nNets - 1; i++) {
             strlcpy(_staSSID[i], _staSSID[i+1], sizeof(_staSSID[i]));
             strlcpy(_staPass[i], _staPass[i+1], sizeof(_staPass[i]));
@@ -1798,7 +1966,21 @@ void webConfigInit(Partido* p) {
         _nNets--;
         guardarWiFiCreds();
         Serial.printf("\n[WiFi] Red eliminada, quedan %d\n", _nNets);
+        if (eraConectada) {
+            WiFi.disconnect(false);
+            Serial.println("[WiFi] Desconectado — era la red activa");
+        }
+        String json = String("{\"ok\":true,\"eraConectada\":") + (eraConectada ? "true" : "false") + "}";
+        server.send(200, "application/json", json);
+    });
+
+    server.on("/reposo-forzar", HTTP_POST, [](){
+        if (_partido && (_partido->activo || _partido->pausado)) {
+            server.send(409, "application/json", "{\"ok\":false,\"error\":\"partido_en_curso\"}");
+            return;
+        }
         server.send(200, "application/json", "{\"ok\":true}");
+        reposoForzarAhora();   // recién después de mandar la respuesta — esto apaga el wifi
     });
 
     // Android: espera 204 para confirmar internet

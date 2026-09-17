@@ -44,7 +44,7 @@ struct Config {
 
     // Comentarista — intervalo y thresholds
     uint16_t intervaloComentariosMin; // default 10
-    uint16_t intervaloComentariosMax; // default 30
+    uint16_t intervaloComentariosMax; // default 15
     uint16_t intervaloStats;          // default 4
     uint8_t  goleadaDiff;             // diff mínimo para goleada (default 3)
     uint8_t  calienteGoles;           // total goles para "caliente" (default 4)

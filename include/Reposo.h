@@ -11,3 +11,4 @@ void reposoInit();                        // llamar una vez en setup()
 void reposoNotificarActividad();          // llamar en cada interacción física (botón, encoder)
 void reposoTick(const Partido& partido);  // llamar cada loop()
 bool reposoActivo();
+void reposoForzarAhora();                 // entra en reposo ya mismo (botón "Apagar wifi" del panel web)

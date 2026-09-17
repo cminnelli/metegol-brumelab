@@ -39,6 +39,13 @@ bool reposoActivo() {
     return _activo;
 }
 
+void reposoForzarAhora() {
+    // El caller (WebConfig.cpp) ya validó que no hay partido en curso —
+    // acá solo falta no duplicar si ya está en reposo.
+    if (_activo) return;
+    entrar();
+}
+
 void reposoNotificarActividad() {
     _ultimaActividad = millis();
     if (_activo) salir();
