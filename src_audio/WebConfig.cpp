@@ -677,10 +677,11 @@ static const char HTML[] PROGMEM = R"rawhtml(
       <span class="acc-chev">⌄</span>
     </button>
     <div class="acc-body" id="wifi-card">
-      <p style="display:flex;align-items:center;gap:8px;font-size:.86rem;color:var(--text);font-weight:600;margin-bottom:18px">
+      <p style="display:flex;align-items:center;gap:8px;font-size:.86rem;color:var(--text);font-weight:600;margin-bottom:2px">
         <span id="wifi-status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0"></span>
         <span id="wifi-status-txt">Verificando...</span>
       </p>
+      <p id="wifi-via-ap" style="display:none;font-size:.72rem;color:var(--muted);margin:0 0 16px 16px">Estás navegando por el Access Point ahora mismo</p>
 
       <div id="saved-nets" style="margin-bottom:18px"></div>
 
@@ -918,8 +919,9 @@ static const char HTML[] PROGMEM = R"rawhtml(
     fetch('/wifiStatus').then(r=>r.json()).then(d=>{
       const txt=document.getElementById('wifi-status-txt');
       const dot=document.getElementById('wifi-status-dot');
+      document.getElementById('wifi-via-ap').style.display=d.viaAP?'block':'none';
       if(d.connected){
-        txt.innerHTML='Conectado a <b>'+d.ssid+'</b>';
+        txt.innerHTML='El equipo está conectado a: <b>'+d.ssid+'</b>';
         dot.style.background='var(--green)';
       } else if(d.apActiva){
         txt.innerHTML='Conectado al Access Point "Makergol"';
@@ -1607,10 +1609,17 @@ void webConfigInit(Partido* p) {
     server.on("/configBrume", HTTP_GET, handleConfigBrumeGet);
 
     server.on("/wifiStatus", HTTP_GET, [](){
+        // De qué red vino ESTE pedido — el estado de arriba (connected/ssid) es
+        // la conexión STA del equipo, que es independiente de por dónde está
+        // navegando quien mira el panel en este momento (accedan por el AP,
+        // 192.168.4.x, o por la red de casa).
+        IPAddress cliente = server.client().remoteIP();
+        bool viaAP = (cliente[0] == 192 && cliente[1] == 168 && cliente[2] == 4);
         String json = "{\"connected\":";
         json += WiFi.isConnected() ? "true" : "false";
         json += ",\"ssid\":\"" + WiFi.SSID() + "\"";
         json += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
+        json += ",\"viaAP\":" + String(viaAP ? "true" : "false");
         json += ",\"apActiva\":" + String(_wifiApagada ? "false" : "true");
         json += ",\"saved\":[";
         for (uint8_t i = 0; i < _nNets; i++) {

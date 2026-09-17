@@ -98,7 +98,13 @@ static EstadoPartido determinarEstado(const Partido& p) {
 
     // ── 6–8. Basado en el marcador ────────────────────────────────────────────
     if (diff == 0) return EstadoPartido::PAREJO;
-    if (diff == 1) return EstadoPartido::TRANQUILO;
+    if (diff == 1) {
+        // Con un gol reciente, "tranquilo" (pocas situaciones, bajó un cambio)
+        // queda raro — recién hubo una jugada clara. "Parejo" (nadie regala
+        // nada, esto está para cualquiera) describe mejor un 1 a 0 fresco.
+        if (tiempoDesdeGol < CALIENTE_RECIENTE_MS) return EstadoPartido::PAREJO;
+        return EstadoPartido::TRANQUILO;
+    }
     return EstadoPartido::DEFINIDO;   // diff 2..goleadaDiff-1
 }
 
