@@ -47,6 +47,7 @@ Partido partido;
 // (no scrolleando) cada uno su ratito, cada intervaloDisplay segundos.
 static uint32_t _altUltimoCambio   = 0;
 static bool     _altMuestraTiempo  = false;
+static uint32_t _tiempoUltimoTick  = 0;   // último refresco en vivo de los segundos (ver displayTiempoActualizar)
 
 // Sensores de gol — file-scope para poder resetear al iniciar partido
 static bool          _prevSensor1  = HIGH;
@@ -380,9 +381,18 @@ void loop() {
                 uint32_t elapsed  = ahora - partido.inicio;
                 uint32_t restante = (elapsed < total) ? (total - elapsed) : 0;
                 displayTiempo(restante);
+                _tiempoUltimoTick = ahora;
             } else {
                 displayMarcadorConScroll(partido.goles[0], partido.goles[1]);
             }
+        } else if (_altMuestraTiempo && ahora - _tiempoUltimoTick >= 1000UL && !displayEnScroll()) {
+            // Tickea los segundos en vivo mientras se está mostrando el tiempo,
+            // en vez de quedar clavado hasta el próximo cambio de alternancia.
+            _tiempoUltimoTick = ahora;
+            uint32_t total    = (uint32_t)config.duracionMin * 60000UL;
+            uint32_t elapsed  = ahora - partido.inicio;
+            uint32_t restante = (elapsed < total) ? (total - elapsed) : 0;
+            displayTiempoActualizar(restante);
         }
     }
 

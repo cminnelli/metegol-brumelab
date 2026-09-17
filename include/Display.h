@@ -10,6 +10,7 @@ void displayMarcadorConScroll(uint8_t local, uint8_t visitante);  // como displa
 void displayGol();
 void displayGanador(int8_t ganador);
 void displayTiempo(uint32_t ms);
+void displayTiempoActualizar(uint32_t ms);  // refresca los segundos en el lugar, sin animación (tick en vivo)
 void displayModo(const char* texto);
 bool displayEnScroll();
 void displayApagar();                 // reposo: apaga el hardware de la matriz (shutdown real, no solo brillo 0)

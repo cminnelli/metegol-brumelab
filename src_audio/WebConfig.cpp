@@ -37,6 +37,7 @@ static bool     _staAnunciado = false;
 static uint32_t _staStartMs  = 0;
 static bool     _staGaveUp   = false;
 static bool     _wifiApagada = false;   // true mientras dura el reposo — ver webConfigApagarWifi()
+static uint32_t _wifiDeleteDisconnectEn = 0;  // 0 = nada pendiente — ver /wifi-delete y webConfigLoop()
 
 // El punto de acceso propio ("Makergol") queda siempre prendido junto con STA
 // (WIFI_AP_STA) — se probó apagarlo apenas STA conecta para ahorrar recursos,
@@ -755,24 +756,22 @@ static const char HTML[] PROGMEM = R"rawhtml(
   <div class="acc" data-acc="wifi">
     <button type="button" class="acc-head" onclick="toggleAcc(this)">
       <span class="acc-ico">📶</span>
-      <span class="acc-txt"><span class="acc-title">Red</span><span class="acc-sub">Conectar el dispositivo a wifi</span></span>
+      <span class="acc-txt"><span class="acc-title">WiFi</span><span class="acc-sub">Conectar el dispositivo a wifi</span></span>
       <span class="acc-chev">⌄</span>
     </button>
     <div class="acc-body" id="wifi-card">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <p style="display:flex;align-items:center;gap:8px;font-size:.86rem;color:var(--text);font-weight:600;margin-bottom:18px">
         <span id="wifi-status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0"></span>
-        <p id="wifi-status-txt" style="font-size:.86rem;color:var(--text);font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Verificando...</p>
-      </div>
+        <span id="wifi-status-txt">Verificando...</span>
+      </p>
 
-      <div id="saved-nets" style="margin-bottom:14px"></div>
+      <div id="saved-nets" style="margin-bottom:18px"></div>
 
-      <p class="sec-lbl" style="color:var(--green)">Conectar a tu WiFi</p>
-      <p style="font-size:.72rem;color:var(--muted);margin:2px 0 10px">Guardá la red de tu casa o local para entrar a este panel directo desde el celu, sin cables.</p>
-      <button type="button" onclick="escanearRedes()" id="btn-scan" style="width:100%;padding:9px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-weight:600;font-size:.82rem;cursor:pointer">🔍 Buscar redes cercanas</button>
+      <button type="button" onclick="escanearRedes()" id="btn-scan" style="width:100%;padding:11px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-weight:600;font-size:.82rem;cursor:pointer">🔍 Agregar red WiFi</button>
       <div id="scan-resultados" style="max-height:200px;overflow-y:auto"></div>
-      <button type="button" id="btn-manual" onclick="mostrarManual()" style="display:none;width:100%;padding:9px;background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-weight:600;font-size:.78rem;cursor:pointer;margin-top:8px">✏️ No encuentro mi red — ingresar a mano</button>
+      <button type="button" id="btn-manual" onclick="mostrarManual()" style="display:none;width:100%;padding:11px;background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-weight:600;font-size:.78rem;cursor:pointer;margin-top:10px">✏️ Ingresar a mano</button>
 
-      <div id="scan-manual" style="display:none;margin-top:10px">
+      <div id="scan-manual" style="display:none;margin-top:14px">
         <div class="field">
           <label>SSID</label>
           <input type="text" id="wSSID" placeholder="Nombre de la red" style="width:100%;padding:9px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.88rem;outline:none">
@@ -784,7 +783,6 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <button type="button" onclick="agregarRed()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:10px;color:#04240f;font-weight:700;font-size:.88rem;cursor:pointer">Guardar y conectar</button>
         <div id="wifi-msg" style="margin-top:10px;text-align:center;min-height:18px"></div>
       </div>
-      <p style="font-size:.68rem;color:var(--muted);margin-top:14px">El punto de acceso propio "Makergol" siempre está disponible como respaldo, aunque ya esté conectado a una red.</p>
     </div>
   </div>
 
@@ -990,7 +988,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
         txt.innerHTML='Conectado a <b>'+d.ssid+'</b>';
         dot.style.background='var(--green)';
       } else if(d.apActiva){
-        txt.innerHTML='Sin red — Access Point activo';
+        txt.innerHTML='Conectado al Access Point "Makergol"';
         dot.style.background='var(--accent)';
       } else {
         txt.textContent='Buscando red...';
@@ -998,14 +996,13 @@ static const char HTML[] PROGMEM = R"rawhtml(
       }
       const sn=document.getElementById('saved-nets');
       if(d.saved&&d.saved.length>0){
-        sn.innerHTML='<p class="sec-lbl" style="color:var(--muted)">Redes guardadas ('+d.saved.length+'/3)</p>'+
+        sn.innerHTML='<p class="sec-lbl" style="color:var(--muted);margin-bottom:8px">WiFi</p>'+
           d.saved.map((s,i)=>{
             const activa=d.connected&&s===d.ssid;
-            return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:1rem;flex-shrink:0">📶</span>
-              <span style="flex:1;min-width:0;font-size:.84rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${s}</b></span>
-              <span style="flex-shrink:0;font-size:.63rem;font-weight:700;padding:3px 8px;border-radius:10px;${activa?'background:rgba(34,197,94,.15);color:var(--green)':'background:rgba(255,255,255,.06);color:var(--muted)'}">${activa?'CONECTADA':'GUARDADA'}</span>
-              <button onclick="eliminarRed(${i})" style="flex-shrink:0;background:transparent;border:1px solid #f44336;color:#f44336;padding:3px 9px;border-radius:12px;font-size:.68rem;cursor:pointer">✕</button>
+            return `<div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--border)">
+              <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${activa?'var(--green)':'var(--border)'}"></span>
+              <span style="flex:1;min-width:0;font-size:.86rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
+              <button onclick="eliminarRed(${i})" style="flex-shrink:0;background:transparent;border:1px solid #f44336;color:#f44336;padding:5px 12px;border-radius:12px;font-size:.72rem;cursor:pointer">Borrar</button>
             </div>`;
           }).join('');
       } else {
@@ -1027,7 +1024,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
         fetch('/wifiStatus').then(r=>r.json()).then(d=>{
           if(d.connected&&d.ssid===ssid){
             clearInterval(t);
-            msg.innerHTML='<span style="font-size:.82rem;color:var(--green)">✓ Conectado a <b>'+ssid+'</b></span>';
+            msg.innerHTML='<span style="font-size:.82rem;color:var(--green)">✓ Conectado a <b>'+ssid+'</b> — ya podés entrar a este panel directo desde esa red</span>';
             actualizarEstadoWiFi();
           } else if(n>13){
             clearInterval(t);
@@ -1042,9 +1039,13 @@ static const char HTML[] PROGMEM = R"rawhtml(
     fetch('/wifi-delete',{method:'POST',body:new URLSearchParams({idx})}).then(r=>r.json()).then(d=>{
       if(!d.ok)return;
       actualizarEstadoWiFi();
-      if(d.eraConectada){
-        popup('Red eliminada. El dispositivo quedó sin conexión — conectate al punto de acceso "Makergol" para configurar otra red.');
-      }
+      // El dispositivo corta la conexión ~400ms después de esta respuesta —
+      // reconsulta poco después para que el estado de arriba (conectado/AP)
+      // se actualice al toque, sin esperar el poll automático de 5s.
+      if(d.eraConectada)setTimeout(actualizarEstadoWiFi,700);
+      popup(d.eraConectada
+        ? 'Red eliminada y desconectado. Conectate al Access Point "Makergol" desde el WiFi de tu celular o PC para configurar otra red.'
+        : 'Red eliminada.');
     }).catch(()=>{});
   }
   async function forzarReposo(){
@@ -1966,12 +1967,15 @@ void webConfigInit(Partido* p) {
         _nNets--;
         guardarWiFiCreds();
         Serial.printf("\n[WiFi] Red eliminada, quedan %d\n", _nNets);
-        if (eraConectada) {
-            WiFi.disconnect(false);
-            Serial.println("[WiFi] Desconectado — era la red activa");
-        }
+        // Mandar la respuesta ANTES de cortar la conexión — si el navegador está
+        // viendo el panel justo a través de esta misma red, desconectar de una
+        // corta el camino de vuelta y la respuesta (y el popup) no llegan a tiempo.
         String json = String("{\"ok\":true,\"eraConectada\":") + (eraConectada ? "true" : "false") + "}";
         server.send(200, "application/json", json);
+        if (eraConectada) {
+            _wifiDeleteDisconnectEn = millis() + 400;  // deja salir la respuesta HTTP antes de cortar
+            Serial.println("[WiFi] Desconectando — era la red activa");
+        }
     });
 
     server.on("/reposo-forzar", HTTP_POST, [](){
@@ -2050,6 +2054,12 @@ void webConfigLoop() {
         _pendingVolUpdate = false;
         vozSetVolumen(config.volumenVoz);
         ambienteSetVolumen(config.volumenAmbiente);
+    }
+
+    if (_wifiDeleteDisconnectEn > 0 && millis() >= _wifiDeleteDisconnectEn) {
+        _wifiDeleteDisconnectEn = 0;
+        WiFi.disconnect(false);
+        Serial.println("\n[WiFi] Desconectado — red borrada era la activa");
     }
 
     if (!_staAnunciado && !_staGaveUp) {

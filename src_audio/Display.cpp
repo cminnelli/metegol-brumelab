@@ -307,6 +307,21 @@ void displayTiempo(uint32_t ms) {
     }
 }
 
+// Refresca los segundos ya quietos en pantalla, sin animación — a diferencia
+// de displayTiempo() (que hace la transición de entrada/salida completa),
+// esta solo redibuja el texto en el lugar para que tickee en vivo mientras
+// se está mostrando (ver alternancia marcador↔tiempo en main.cpp). Si hay
+// una transición en curso no hace nada — no tiene sentido pisarla.
+void displayTiempoActualizar(uint32_t ms) {
+    if (_enScroll) return;
+    static char buf[8];
+    uint32_t seg = ms / 1000;
+    snprintf(buf, sizeof(buf), "%02lu:%02lu", seg / 60, seg % 60);
+    if (strcmp(buf, _actualMostrado) == 0) return;
+    disp.displayText(buf, PA_CENTER, 0, 0, PA_PRINT, PA_NO_EFFECT);
+    strlcpy(_actualMostrado, buf, sizeof(_actualMostrado));
+}
+
 bool displayEnScroll() {
     return _enScroll;
 }
