@@ -234,7 +234,7 @@ void loop() {
         // Filtro anti-ruido: un flanco de bajada arma un candidato, y el gol recién
         // se confirma si el sensor sigue en LOW pasados SENSOR_MIN_LOW_MS — un rebote
         // o ruido que vuelve a HIGH antes de eso se descarta sin contar.
-        if (millis() - _ultimoGol1 >= 5000) {
+        if (millis() - _ultimoGol1 >= 3000) {
             if (cur1 == LOW) {
                 if (_prevSensor1 == HIGH) {
                     _sensor1LowAt = millis();
@@ -268,7 +268,7 @@ void loop() {
                 _sensor1LowAt = 0;
             }
         }
-        if (millis() - _ultimoGol2 >= 5000) {
+        if (millis() - _ultimoGol2 >= 3000) {
             if (cur2 == LOW) {
                 if (_prevSensor2 == HIGH) {
                     _sensor2LowAt = millis();
