@@ -87,6 +87,19 @@ static void tocarAmbiente(const RangoAudio& r, const char* label, bool loop) {
     Serial.printf("     %-14s pista %d\n", label, pista);
 }
 
+// Relanza la MISMA pista que ya estaba sonando (no elige una nueva) — se usa cuando
+// el 0x19 de hardware debería haberla loopeado solo y no lo hizo (o no confiamos en
+// que lo haya hecho): sigue siendo la misma canción hasta el próximo gol, el ESP32
+// solo se asegura de que efectivamente vuelva a sonar.
+static void relanzarMismaPista(const char* label) {
+    _trackStartAt = millis();
+    cmd(0x06, 0x00, config.volumenAmbiente);
+    cmd(0x03, 0x00, _pistaActual);
+    cmd(0x19, 0x00, 0x00);
+    Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+    Serial.printf("     %-14s pista %d (relanzada)\n", label, _pistaActual);
+}
+
 // Decide a dónde vuelve SP2 cuando termina gol_reaccion — mismo camino tanto si el
 // DFPlayer avisó de verdad (0x3D, viaFailsafe=false) como si se fuerza por el failsafe
 // (viaFailsafe=true, que solo cambia el sufijo del log). La hinchada suena como máximo
@@ -199,9 +212,12 @@ void ambientePoll() {
                     Serial.printf("\n[ELEC] SP2: reset  [modo:%s  p:%d]\n", ambienteGetEstado(), _pistaActual);
                     cmd(0x06, 0x00, config.volumenAmbiente);  // restaura volumen tras reset
                     if (_modo == AmbModo::GOL_REACCION || _modo == AmbModo::HINCHADA) {
-                        _modo        = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
-                        _pistaActual = 0;
+                        _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
                     }
+                    // Cualquier modo: tras un reset no hay pista activa de verdad, la haya
+                    // pedido quien la haya pedido — así el watchdog de ambienteActualizar()
+                    // (pistaActual==0) la retoma solo en el próximo tick, sin esperar a un gol.
+                    _pistaActual = 0;
                     break;
                 case 0x3D: {
                     if (_modo == AmbModo::PARADO) break;
@@ -221,8 +237,19 @@ void ambientePoll() {
                         Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
                         Serial.printf("     hinchada fin  |  %lus  →  %s\n", (unsigned long)durS, lbl);
                         tocarAmbiente(r, lbl, true);
+                    } else {
+                        // NORMAL/CALIENTE: no confiar en que el 0x19 la haya loopeado bien sola
+                        // (hay DFPlayers/clones que no lo respetan) — se usa este aviso real de
+                        // "pista terminada" para relanzar la MISMA pista por software. Sigue siendo
+                        // una sola canción en loop hasta el próximo gol; solo cambia quién se asegura
+                        // de que vuelva a sonar. El log de duración sirve para diagnosticar en la
+                        // mesa real si el 0x3D llega en cada vuelta del loop de hardware o solo
+                        // cuando se corta de verdad.
+                        uint32_t durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
+                        const char* lbl = (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente";
+                        Serial.printf("     (loop anterior duró %lus)\n", (unsigned long)durS);
+                        relanzarMismaPista(lbl);
                     }
-                    // NORMAL/CALIENTE: 0x19 loopea automáticamente — ignorar
                     break;
                 }
                 case 0x40:
