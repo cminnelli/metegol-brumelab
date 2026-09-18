@@ -262,7 +262,13 @@ include/
   WebConfig.h
   config.h           ← constantes de build
 
-COMENTARISTA.md      ← lógica detallada del comentarista y SP2
+data/
+  COMENTARISTA.md      ← lógica detallada del comentarista y SP2
+  diagrama_conexiones.svg
+  estados
+  frases.json
+  tutorial_makergol.pdf ← guía rápida para el usuario final
+
 README.md            ← este archivo
 ```
 
