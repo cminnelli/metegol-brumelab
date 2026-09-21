@@ -48,6 +48,10 @@ static uint32_t _altUltimoCambio   = 0;
 static bool     _altMuestraTiempo  = false;
 static uint32_t _tiempoUltimoTick  = 0;   // último refresco en vivo de los segundos (ver displayTiempoActualizar)
 
+// Display en pausa: alterna el texto de pausa ↔ marcador, cada intervaloDisplay segundos
+static uint32_t _pausaUltimoCambio  = 0;
+static bool     _pausaMuestraTexto  = true;   // arranca mostrando el texto (ya se mostró al pausar)
+
 // Sensores de gol — file-scope para poder resetear al iniciar partido
 static bool          _prevSensor1  = HIGH;
 static bool          _prevSensor2  = HIGH;
@@ -373,6 +377,29 @@ void loop() {
         }
     }
 
+    // ---- Display: en pausa, alterna el texto de pausa ↔ marcador cada
+    //     intervaloDisplay segundos. Detecta el arranque de la pausa acá mismo
+    //     (en vez de resetear el estado en cada lugar que pausa: encoder y web)
+    //     para que ande igual sin importar quién la disparó.
+    {
+        static bool _pausadoAnterior = false;
+        if (partido.pausado && !_pausadoAnterior) {
+            _pausaUltimoCambio = millis();
+            _pausaMuestraTexto = true;   // ya se mostró el texto de pausa al pausar
+        }
+        _pausadoAnterior = partido.pausado;
+    }
+    if (partido.pausado) {
+        uint32_t ahora = millis();
+        if (ahora - _pausaUltimoCambio >= (uint32_t)config.intervaloDisplay * 1000UL
+            && !displayEnScroll()) {
+            _pausaUltimoCambio = ahora;
+            _pausaMuestraTexto = !_pausaMuestraTexto;
+            if (_pausaMuestraTexto) displayTextoConScroll(config.textoPausa);
+            else                    displayMarcadorConScroll(partido.goles[0], partido.goles[1]);
+        }
+    }
+
     // ---- Encoder: rotación — pre-game: alterna modo de juego ----
     if (encChanged) {
         encChanged = false;
@@ -446,7 +473,7 @@ void loop() {
                     // Jugando → pausar
                     partido.activo  = false;
                     partido.pausado = true;
-                    displayTexto(config.textoPausa, config.velocidadScroll);
+                    displayTextoConScroll(config.textoPausa);
                     Serial.println("\n[ENCODER] Partido pausado");
                 } else if (partido.pausado) {
                     // Pausado → reanudar

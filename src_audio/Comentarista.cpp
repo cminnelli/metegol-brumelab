@@ -469,6 +469,16 @@ void comentaristaStats(const Partido& partido) {
 
     Serial.printf("\n──── %02lu:%02lu  [STATS: %s%s]  [%s]\n",
         (unsigned long)mm, (unsigned long)ss, est, sub, modo);
-    Serial.printf("     %d  ─  %d   |  goles:%d  diff:%d  |  SP2: %s p:%d\n",
-        partido.goles[0], partido.goles[1], total, diff, ambienteGetEstado(), ambienteGetPista());
+    uint32_t ambTranscurrido = ambienteGetDuracionSegs();
+    uint32_t ambTotal        = ambienteGetDuracionTotalSegs();
+    if (ambTotal > 0) {
+        uint32_t ambFalta = (ambTranscurrido < ambTotal) ? (ambTotal - ambTranscurrido) : 0;
+        Serial.printf("     %d  ─  %d   |  goles:%d  diff:%d  |  SP2: %s p:%d %lus/%lus (faltan %lus)\n",
+            partido.goles[0], partido.goles[1], total, diff, ambienteGetEstado(), ambienteGetPista(),
+            (unsigned long)ambTranscurrido, (unsigned long)ambTotal, (unsigned long)ambFalta);
+    } else {
+        Serial.printf("     %d  ─  %d   |  goles:%d  diff:%d  |  SP2: %s p:%d (%lus)\n",
+            partido.goles[0], partido.goles[1], total, diff, ambienteGetEstado(), ambienteGetPista(),
+            (unsigned long)ambTranscurrido);
+    }
 }

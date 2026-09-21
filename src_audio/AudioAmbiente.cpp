@@ -13,6 +13,41 @@
 // define su propia duración.
 #define GOL_REACCION_FAILSAFE_MS 15000UL
 #define HINCHADA_FAILSAFE_MS     90000UL
+// Ambiente/caliente (loop de fondo): confirmado en mesa real que hay DFPlayers que
+// se quedan mudos sin avisar NADA — ni siquiera el 0x3D que gol_reaccion/hinchada
+// sí reciben. Sin este failsafe, esos dos no tienen ninguna red de contención (el
+// 0x3D nunca llega, así que relanzarMismaPista() nunca se dispara). Medido con
+// afinfo sobre los wav reales: la pista más larga de ambienteGenerico dura 98s —
+// 150s da margen sin arriesgar cortar una pista larga que todavía está sonando bien.
+#define AMBIENTE_FAILSAFE_MS     150000UL
+
+// Duración real (ms) de las pistas 1-17 de esta SD — ambienteGenerico, hinchadaMusica,
+// momentoCaliente y ambienteGol, en ese orden — medida con `afinfo` sobre los wav.
+// Con este DFPlayer el 0x3D prácticamente no llega nunca, así que en vez de esperar
+// siempre el failsafe genérico (calibrado para la pista más larga de la categoría),
+// el failsafe usa la duración real de la pista que está sonando cuando la conoce, y
+// solo cae al genérico si la pista no está en esta tabla (SD distinta, rangos
+// reconfigurados fuera de 1-17) — así nunca corta nada antes de tiempo.
+static const uint32_t PISTA_DURACION_MS[] = {
+    37965, 36504, 84023, 98284,          // 1-4   ambienteGenerico
+    93205, 57168, 71866, 57864,          // 5-8   hinchadaMusica
+    26192, 24102, 37222,                 // 9-11  momentoCaliente
+     5476,  7301,  6989, 13096, 10951, 12423,  // 12-17 ambienteGol
+};
+#define PISTA_DURACION_MS_MARGEN 1200UL   // margen sobre la duración medida, antes de forzar
+
+// Duración real medida, sin el margen del failsafe — para mostrar en el log
+// (transcurrido/total), no para decidir cuándo forzar.
+static uint32_t duracionPistaBase(uint8_t pista) {
+    if (pista >= 1 && pista <= sizeof(PISTA_DURACION_MS) / sizeof(PISTA_DURACION_MS[0]))
+        return PISTA_DURACION_MS[pista - 1];
+    return 0;   // pista desconocida
+}
+
+static uint32_t duracionPista(uint8_t pista) {
+    uint32_t base = duracionPistaBase(pista);
+    return base > 0 ? base + PISTA_DURACION_MS_MARGEN : 0;   // 0: el caller cae al failsafe genérico
+}
 
 // La hinchada suena como máximo esta cantidad de veces por partido (el gol que la
 // dispara + una "retoma" si otro gol la interrumpe mientras sigue sonando). Pasado el
@@ -68,6 +103,7 @@ static uint8_t  _calienteCount = 0;     // sesiones caliente por partido (máx 2
 static uint8_t  _hinchadaVeces = 0;     // cuántas veces sonó hinchada en este partido (tope: HINCHADA_MAX_VECES)
 static uint8_t  _golesPartido  = 0;    // goles totales del partido (para trigger hinchada)
 static uint32_t _trackStartAt  = 0;   // para reportar duración al cambiar de pista
+static uint32_t _ultimo0x3DProcesadoAt = 0;   // ver debounce de 0x3D duplicado en ambientePoll()
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -76,14 +112,20 @@ static uint32_t _trackStartAt  = 0;   // para reportar duración al cambiar de p
 // instantáneo. (Se probó tapar el corte con un sonido corto de "transición" antes
 // de la pista nueva, pero depende de tener esos archivos extra grabados en la SD
 // y sumaba una fuente más de fallo del DFPlayer sin ganancia real — se descartó.)
-static void tocarAmbiente(const RangoAudio& r, const char* label, bool loop) {
+// Nunca arma el loop de hardware (0x19): el software es el único responsable de
+// relanzar cuando corresponde (ver relanzarMismaPista/el failsafe en ambientePoll)
+// — pedirle al DFPlayer que loopee por su cuenta ADEMÁS competía con eso, y si el
+// módulo a veces sí cumplía el loop, sonaba como un doble corte.
+// cabecera=false: el caller ya imprimió el bloque "SPK2 - AMBIENTE" con la razón
+// del cambio (failsafe, error, etc.) — evita que un solo evento se vea en el log
+// como si fueran dos (una cabecera para el porqué, otra para el resultado).
+static void tocarAmbiente(const RangoAudio& r, const char* label, bool cabecera = true) {
     uint8_t pista = r.desde + random(r.hasta - r.desde + 1);
     _pistaActual  = pista;
     _trackStartAt = millis();
     cmd(0x06, 0x00, config.volumenAmbiente);
     cmd(0x03, 0x00, pista);
-    if (loop) cmd(0x19, 0x00, 0x00);
-    Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+    if (cabecera) Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
     Serial.printf("     %-14s pista %d\n", label, pista);
 }
 
@@ -91,12 +133,19 @@ static void tocarAmbiente(const RangoAudio& r, const char* label, bool loop) {
 // el 0x19 de hardware debería haberla loopeado solo y no lo hizo (o no confiamos en
 // que lo haya hecho): sigue siendo la misma canción hasta el próximo gol, el ESP32
 // solo se asegura de que efectivamente vuelva a sonar.
-static void relanzarMismaPista(const char* label) {
+static void relanzarMismaPista(const char* label, bool cabecera = true) {
+    // Sin cmd(0x06 volumen): no cambió desde que arrancó la pista, y reenviarlo
+    // igual genera su propio blip audible en el DFPlayer, separado del corte del
+    // play — sonaba como un doble corte en vez de uno solo.
+    // Sin cmd(0x19 loop) tampoco: si el DFPlayer a veces SÍ cumple el loop de
+    // hardware (no "nunca", solo poco confiable) y encima el software también
+    // fuerza el relanzamiento por su cuenta, pueden competir los dos casi al
+    // mismo tiempo — el módulo reiniciando solo Y el ESP32 forzándolo también.
+    // Ahora el software es el único responsable de principio a fin: nunca se le
+    // pide al módulo que loopee solo una pista de ambiente/caliente.
     _trackStartAt = millis();
-    cmd(0x06, 0x00, config.volumenAmbiente);
     cmd(0x03, 0x00, _pistaActual);
-    cmd(0x19, 0x00, 0x00);
-    Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+    if (cabecera) Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
     Serial.printf("     %-14s pista %d (relanzada)\n", label, _pistaActual);
 }
 
@@ -107,8 +156,12 @@ static void relanzarMismaPista(const char* label) {
 // la interrumpe mientras sigue sonando — pasado el tope, cae al caso de abajo (vuelve a
 // ambiente normal/caliente) igual que si nunca hubiera habido hinchada.
 static void volverDeGolReaccion(bool viaFailsafe) {
+    // Una sola cabecera "SPK2 - AMBIENTE" por evento: el porqué (esta línea, o la
+    // de "gol_reaccion fin" más abajo) y el resultado (la que imprime tocarAmbiente()
+    // al final, con cabecera=false) van bajo el mismo bloque — si no, en el log
+    // parece que fueran dos eventos separados.
+    Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
     if (viaFailsafe) {
-        Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
         Serial.printf("     gol_reaccion: el DFPlayer nunca avisó que terminó, failsafe forzando salida\n");
     }
     const char* wdComa = viaFailsafe ? ", wd" : "";   // sufijo dentro de "hinchada (...)"
@@ -116,30 +169,27 @@ static void volverDeGolReaccion(bool viaFailsafe) {
     uint32_t durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
     char lbl[24];
     const RangoAudio* r;
-    bool loop;
 
     if (_modoAnteGol == AmbModo::HINCHADA && _hinchadaVeces < HINCHADA_MAX_VECES) {
         _hinchadaVeces++;
         _modo = AmbModo::HINCHADA;
         snprintf(lbl, sizeof(lbl), "hinchada (retoma%s)", wdComa);
-        r = &config.hinchadaMusica; loop = false;
+        r = &config.hinchadaMusica;
     } else if (_hinchadaVeces == 0 && _golesPartido >= config.hinchadaGol) {
         _hinchadaVeces = 1;
         _modo = AmbModo::HINCHADA;
         snprintf(lbl, sizeof(lbl), "hinchada (once%s)", wdComa);
-        r = &config.hinchadaMusica; loop = false;
+        r = &config.hinchadaMusica;
     } else {
         _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
         r = (_modo == AmbModo::CALIENTE) ? &config.momentoCaliente : &config.ambienteGenerico;
         snprintf(lbl, sizeof(lbl), "%s%s", (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente", wdSolo);
-        loop = true;
     }
 
     if (!viaFailsafe) {
-        Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
         Serial.printf("     gol_reaccion fin  |  %lus  →  %s\n", (unsigned long)durS, lbl);
     }
-    tocarAmbiente(*r, lbl, loop);
+    tocarAmbiente(*r, lbl, false);
 }
 
 // ── API pública ───────────────────────────────────────────────────────────────
@@ -177,17 +227,33 @@ void ambientePoll() {
     // el ambiente quedaba trabado en hinchada para siempre tras el pitido final,
     // porque no hay ningún otro evento (próximo gol, próximo partido) que lo saque.
     if (_modo == AmbModo::GOL_REACCION) {
-        if (millis() - _trackStartAt > GOL_REACCION_FAILSAFE_MS) {
+        uint32_t limite = duracionPista(_pistaActual);
+        if (limite == 0) limite = GOL_REACCION_FAILSAFE_MS;
+        if (millis() - _trackStartAt > limite) {
             volverDeGolReaccion(true);
         }
     } else if (_modo == AmbModo::HINCHADA) {
-        if (millis() - _trackStartAt > HINCHADA_FAILSAFE_MS) {
+        uint32_t limite = duracionPista(_pistaActual);
+        if (limite == 0) limite = HINCHADA_FAILSAFE_MS;
+        if (millis() - _trackStartAt > limite) {
             Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
             Serial.printf("     hinchada: el DFPlayer nunca avisó que terminó, failsafe forzando salida\n");
             _modo = _enCaliente ? AmbModo::CALIENTE : AmbModo::NORMAL;
             const RangoAudio& r = _enCaliente ? config.momentoCaliente : config.ambienteGenerico;
             const char*     lbl = _enCaliente ? "caliente (wd)" : "ambiente (wd)";
-            tocarAmbiente(r, lbl, true);
+            tocarAmbiente(r, lbl, false);
+        }
+    } else if (_modo == AmbModo::NORMAL || _modo == AmbModo::CALIENTE) {
+        // Confirmado en mesa real: hay DFPlayers que se quedan mudos sin avisar
+        // NADA, ni el 0x3D que relanzarMismaPista() necesita para reaccionar — con
+        // esos módulos, sin este failsafe, el ambiente no tiene ninguna forma de
+        // recuperarse. Igual que arriba: último recurso, no depende de ningún aviso.
+        uint32_t limite = duracionPista(_pistaActual);
+        if (limite == 0) limite = AMBIENTE_FAILSAFE_MS;
+        if (millis() - _trackStartAt > limite) {
+            Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+            Serial.printf("     %s: el DFPlayer nunca avisó nada, failsafe forzando relanzar\n", ambienteGetEstado());
+            relanzarMismaPista(_modo == AmbModo::CALIENTE ? "caliente" : "ambiente", false);
         }
     }
 
@@ -220,13 +286,37 @@ void ambientePoll() {
                     _pistaActual = 0;
                     break;
                 case 0x3D: {
-                    if (_modo == AmbModo::PARADO) break;
+                    uint32_t desdeInicio = millis() - _trackStartAt;
+                    // Log crudo de TODO 0x3D que llega, se use o se descarte — sin esto, un
+                    // aviso descartado desaparece del log sin dejar rastro y no hay forma de
+                    // saber si el doble corte viene de acá o de otro lado.
+                    Serial.printf("\n[0x3D] val=%d  pistaActual=%d  modo=%s  desde_inicio=%lums\n",
+                        val, _pistaActual, ambienteGetEstado(), (unsigned long)desdeInicio);
+                    if (_modo == AmbModo::PARADO) { Serial.printf("       descartado: modo PARADO\n"); break; }
+                    // Algunos clones de DFPlayer mandan el 0x3D DUPLICADO — dos avisos para el
+                    // mismo final de pista, real, no atrasado. El chequeo de "desde_inicio" de
+                    // abajo no lo frena porque los dos llegan en el momento correcto. Este es
+                    // un resguardo aparte: si ya procesamos un 0x3D hace menos de 1s (sea cual
+                    // sea la pista), el segundo es casi seguro un duplicado del mismo aviso.
+                    if (millis() - _ultimo0x3DProcesadoAt < 1000UL) {
+                        Serial.printf("       descartado: 0x3D duplicado (< 1s del último procesado)\n");
+                        break;
+                    }
                     // val = número de pista que terminó. Como cmd() ahora encola (no bloquea), al
                     // encolar el comando de una pista nueva _pistaActual se actualiza al instante
                     // pero el comando "play" real puede tardar hasta ~150ms en salir por la cola —
                     // en esa ventana puede llegar el 0x3D legítimo de la pista VIEJA, que sin este
                     // chequeo se interpretaba como si la pista nueva ya hubiera terminado.
-                    if (val != _pistaActual) break;
+                    if (val != _pistaActual) { Serial.printf("       descartado: val != pistaActual\n"); break; }
+                    // Confirmado en mesa real: cuando se relanza la MISMA pista (ver
+                    // relanzarMismaPista, failsafe de ambiente/caliente), este chequeo de
+                    // arriba no alcanza — el número no cambió, así que un 0x3D viejo y
+                    // atrasado de la reproducción ANTERIOR de esa misma pista pasa el
+                    // chequeo igual y dispara un segundo relanzamiento casi inmediato
+                    // (sonaba como un doble corte). Ninguna pista real dura tan poco, así
+                    // que un aviso a menos de 1.5s de haber (re)arrancado tiene que ser un
+                    // resto viejo — se descarta.
+                    if (desdeInicio < 1500UL) { Serial.printf("       descartado: <1.5s desde inicio, probable aviso viejo\n"); break; }
                     if (_modo == AmbModo::GOL_REACCION) {
                         volverDeGolReaccion(false);
                     } else if (_modo == AmbModo::HINCHADA) {
@@ -236,7 +326,7 @@ void ambientePoll() {
                         const char*       lbl = (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente";
                         Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
                         Serial.printf("     hinchada fin  |  %lus  →  %s\n", (unsigned long)durS, lbl);
-                        tocarAmbiente(r, lbl, true);
+                        tocarAmbiente(r, lbl, false);
                     } else {
                         // NORMAL/CALIENTE: no confiar en que el 0x19 la haya loopeado bien sola
                         // (hay DFPlayers/clones que no lo respetan) — se usa este aviso real de
@@ -247,8 +337,9 @@ void ambientePoll() {
                         // cuando se corta de verdad.
                         uint32_t durS = _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
                         const char* lbl = (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente";
-                        Serial.printf("     (loop anterior duró %lus)\n", (unsigned long)durS);
-                        relanzarMismaPista(lbl);
+                        Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
+                        Serial.printf("     loop anterior duró %lus\n", (unsigned long)durS);
+                        relanzarMismaPista(lbl, false);
                     }
                     break;
                 }
@@ -268,7 +359,7 @@ void ambientePoll() {
                         const char*       lbl = (_modo == AmbModo::CALIENTE) ? "caliente" : "ambiente";
                         Serial.printf("\n──── SPK2 - AMBIENTE  ───────────────────────\n");
                         Serial.printf("     hinchada fin  |  %lus  →  %s (err)\n", (unsigned long)durS, lbl);
-                        tocarAmbiente(r, lbl, true);
+                        tocarAmbiente(r, lbl, false);
                     }
                     break;
                 default: break;
@@ -293,7 +384,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
         _calienteCount++;
         _enCaliente = true;
         _modo       = AmbModo::CALIENTE;
-        tocarAmbiente(config.momentoCaliente, "caliente", true);
+        tocarAmbiente(config.momentoCaliente, "caliente");
         return;
     }
 
@@ -302,7 +393,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
         _enCaliente = false;
         if (_modo == AmbModo::CALIENTE) {
             _modo = AmbModo::NORMAL;
-            tocarAmbiente(config.ambienteGenerico, "ambiente", true);
+            tocarAmbiente(config.ambienteGenerico, "ambiente");
         }
         return;
     }
@@ -310,7 +401,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
     // Arrancar NORMAL al iniciar el partido
     if (_modo == AmbModo::PARADO) {
         _modo = AmbModo::NORMAL;
-        tocarAmbiente(config.ambienteGenerico, "ambiente", true);
+        tocarAmbiente(config.ambienteGenerico, "ambiente");
         return;
     }
 
@@ -318,7 +409,7 @@ void ambienteActualizar(bool activo, bool esCaliente) {
     if (_pistaActual == 0) {
         const RangoAudio& r = (_modo == AmbModo::CALIENTE) ? config.momentoCaliente : config.ambienteGenerico;
         const char* lbl     = (_modo == AmbModo::CALIENTE) ? "caliente (wd)" : "ambiente (wd)";
-        tocarAmbiente(r, lbl, true);
+        tocarAmbiente(r, lbl);
     }
 }
 
@@ -354,6 +445,14 @@ const char* ambienteGetEstado() {
 
 uint8_t ambienteGetPista() {
     return _pistaActual;
+}
+
+uint32_t ambienteGetDuracionSegs() {
+    return _trackStartAt > 0 ? (millis() - _trackStartAt) / 1000 : 0;
+}
+
+uint32_t ambienteGetDuracionTotalSegs() {
+    return duracionPistaBase(_pistaActual) / 1000;   // 0 si la pista no está en la tabla
 }
 
 // 0x0A/0x0B (standby/normal del estándar DFPlayer Mini) se probaron acá y

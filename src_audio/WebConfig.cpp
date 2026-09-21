@@ -1491,7 +1491,7 @@ static void handlePause() {
     if (_partido && _partido->activo) {
         _partido->activo  = false;
         _partido->pausado = true;
-        displayTexto(config.textoPausa, config.velocidadScroll);
+        displayTextoConScroll(config.textoPausa);
         Serial.println("\n[JUEGO] Partido pausado (web)");
     }
     server.send(200, "application/json", "{\"ok\":true}");

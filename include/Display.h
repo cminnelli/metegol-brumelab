@@ -7,6 +7,7 @@ void displaySetBrillo(uint8_t brillo);   // aplica el brillo normal en el acto (
 void displayTexto(const char* texto, uint16_t velocidad = 40);
 void displayMarcador(uint8_t local, uint8_t visitante);
 void displayMarcadorConScroll(uint8_t local, uint8_t visitante);  // como displayMarcador, pero con transición: sale lo que había y entra deslizando
+void displayTextoConScroll(const char* texto);  // como displayMarcadorConScroll, pero para texto arbitrario — entra y se queda quieto, no vuelve sola al marcador
 void displayGol();
 void displayGanador(int8_t ganador);
 void displayTiempo(uint32_t ms);

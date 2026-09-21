@@ -26,10 +26,11 @@ static MD_Parola disp(HW_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 static char _marcador[8] = "0-0";
 static bool _enScroll = false;
 
-// Lo que está quieto en pantalla ahora mismo (marcador o tiempo restante) —
-// hace falta saberlo para poder hacerlo "salir" scrolleando antes de que entre
-// lo próximo (ver iniciarSalida más abajo).
-static char _actualMostrado[8] = "";
+// Lo que está quieto en pantalla ahora mismo (marcador, tiempo restante, o un
+// texto tipo PAUSA! sostenido con displayTextoConScroll) — hace falta saberlo
+// para poder hacerlo "salir" scrolleando antes de que entre lo próximo (ver
+// iniciarSalida más abajo). 20 = tamaño máximo de config.textoPausa.
+static char _actualMostrado[20] = "";
 
 // Cuando termina un scroll normal (Gollll!!!, PAUSA!, etc.), displayTick() vuelve
 // sola al marcador — eso está bien para esos casos. Pero la alternancia
@@ -43,10 +44,10 @@ static bool _mantenerTrasScroll = false;
 // guarda acá y displayTick() la arranca sola, apenas termina la que está en
 // curso. Si llega un tercer pedido antes de que eso pase, pisa al que estaba en
 // cola: solo importa el último.
-enum class TipoPendiente : uint8_t { NINGUNO, SCROLL, GOL, ENTRADA_MARCADOR, ENTRADA_TIEMPO };
+enum class TipoPendiente : uint8_t { NINGUNO, SCROLL, GOL, ENTRADA_MARCADOR, ENTRADA_TIEMPO, ENTRADA_TEXTO };
 struct Pendiente {
     TipoPendiente  tipo = TipoPendiente::NINGUNO;
-    char           texto[64];        // TipoPendiente::SCROLL y TipoPendiente::GOL
+    char           texto[64];        // TipoPendiente::SCROLL, GOL y ENTRADA_TEXTO
     textPosition_t align;
     textEffect_t   efecto;
     uint16_t       velocidad;
@@ -141,6 +142,19 @@ static void iniciarEntradaTiempo(uint32_t ms) {
     disp.displayText(buf, PA_CENTER, VELOCIDAD_TRANSICION_MS, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
 }
 
+// Igual que arriba pero para texto arbitrario (ver displayTextoConScroll) — a
+// diferencia de displayTexto()/scrollSanitizado(), se queda quieta al terminar
+// de entrar en vez de volver sola al marcador.
+static void iniciarEntradaTexto(const char* texto) {
+    static char buf[20];   // estático: MD_Parola guarda el puntero, no una copia
+    asciiSanitize(texto, buf, sizeof(buf));
+    strlcpy(_actualMostrado, buf, sizeof(_actualMostrado));
+    _mantenerTrasScroll = true;
+    _enScroll = true;
+    disp.displayClear();
+    disp.displayText(buf, PA_CENTER, VELOCIDAD_TRANSICION_MS, 0, PA_SCROLL_LEFT, PA_NO_EFFECT);
+}
+
 // Hace SALIR lo que está quieto en pantalla ahora mismo, deslizándolo hacia la
 // izquierda desde donde ya está — a diferencia de displayScroll()/iniciarScroll(),
 // que siempre arranca desde afuera de la pantalla (si se usa para "sacar" algo que
@@ -222,6 +236,10 @@ void displayTick() {
             _pendiente.tipo = TipoPendiente::NINGUNO;
             iniciarEntradaTiempo(_pendiente.tiempoMs);
             return;
+        case TipoPendiente::ENTRADA_TEXTO:
+            _pendiente.tipo = TipoPendiente::NINGUNO;
+            iniciarEntradaTexto(_pendiente.texto);
+            return;
         default: break;
     }
 
@@ -265,6 +283,20 @@ void displayMarcadorConScroll(uint8_t local, uint8_t visitante) {
         iniciarSalida(_actualMostrado);
     } else {
         iniciarEntradaMarcador(local, visitante);
+    }
+}
+
+// Igual que displayMarcadorConScroll(), pero para texto arbitrario — usada por la
+// alternancia PAUSA!↔marcador en pausa: a diferencia de displayTexto(), se queda
+// quieta al terminar de entrar en vez de que displayTick() la tape con el marcador.
+void displayTextoConScroll(const char* texto) {
+    if (_enScroll) return;
+    if (_actualMostrado[0] != '\0') {
+        _pendiente.tipo = TipoPendiente::ENTRADA_TEXTO;
+        strlcpy(_pendiente.texto, texto, sizeof(_pendiente.texto));
+        iniciarSalida(_actualMostrado);
+    } else {
+        iniciarEntradaTexto(texto);
     }
 }
 
