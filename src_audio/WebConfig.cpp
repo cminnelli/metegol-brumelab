@@ -246,6 +246,7 @@ static void cargarConfig() {
         config.ambienteGol.desde      = prefs.getUChar("aGoD",  12);
         config.ambienteGol.hasta      = prefs.getUChar("aGoH",  17);
     }
+    config.failsafeMargenMs = prefs.getUShort("fsMargMs", 1200);
     prefs.end();
 }
 
@@ -353,6 +354,7 @@ static void guardarConfig() {
     prefs.putUChar("mCa4H", config.momentoCaliente.hasta);
     prefs.putUChar("aGoD",  config.ambienteGol.desde);
     prefs.putUChar("aGoH",  config.ambienteGol.hasta);
+    prefs.putUShort("fsMargMs", config.failsafeMargenMs);
     prefs.end();
 }
 
@@ -860,6 +862,10 @@ static const char HTML[] PROGMEM = R"rawhtml(
             <tr><td><span class="rl">reacción gol <span class="info-ico" tabindex="0" data-tip="Instantáneo en cada gol.">ⓘ</span></span></td><td><input class="ni" type="number" name="aGoD" min="1" max="255" value="%A_GO_D%"></td><td><input class="ni" type="number" name="aGoH" min="1" max="255" value="%A_GO_H%"></td></tr>
           </tbody>
         </table>
+        <div class="field" style="margin-top:12px">
+          <label>Margen failsafe SP2 (ms) <span class="info-ico" tabindex="0" data-tip="Si el DFPlayer no avisa que una pista de SP2 terminó, se la fuerza a cambiar apenas se cumple su duración real más este margen. Poco margen puede cortarla antes de tiempo; mucho margen deja más silencio de más si el módulo no avisa nada.">ⓘ</span> <b id="fsm">%FAILSAFE_MARGEN%</b></label>
+          <input type="range" name="failsafeMargenMs" min="200" max="3000" step="100" value="%FAILSAFE_MARGEN%" oninput="sl(this,'fsm')">
+        </div>
       </div>
     </div>
     </div>
@@ -1288,6 +1294,7 @@ static String buildPage() {
     html.replace("%M_CA_H%",  String(config.momentoCaliente.hasta));
     html.replace("%A_GO_D%",  String(config.ambienteGol.desde));
     html.replace("%A_GO_H%",  String(config.ambienteGol.hasta));
+    html.replace("%FAILSAFE_MARGEN%", String(config.failsafeMargenMs));
     return html;
 }
 
@@ -1406,6 +1413,7 @@ static void handleSave() {
     if (server.hasArg("mCaH"))  config.momentoCaliente.hasta   = server.arg("mCaH").toInt();
     if (server.hasArg("aGoD"))  config.ambienteGol.desde       = server.arg("aGoD").toInt();
     if (server.hasArg("aGoH"))  config.ambienteGol.hasta       = server.arg("aGoH").toInt();
+    if (server.hasArg("failsafeMargenMs")) config.failsafeMargenMs = constrain(server.arg("failsafeMargenMs").toInt(), 200, 3000);
 
     guardarConfig();
     _pendingVolUpdate = true;  // aplica volumen en el próximo loop, no aquí

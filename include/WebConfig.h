@@ -91,6 +91,7 @@ struct Config {
     RangoAudio hinchadaMusica;        // {5, 8}
     RangoAudio momentoCaliente;       // {9, 11}
     RangoAudio ambienteGol;           // {12, 17}
+    uint16_t   failsafeMargenMs;      // margen sobre la duración medida de cada pista antes de forzar el relanzamiento (default 1200)
 };
 
 extern Config config;

@@ -34,8 +34,6 @@ static const uint32_t PISTA_DURACION_MS[] = {
     26192, 24102, 37222,                 // 9-11  momentoCaliente
      5476,  7301,  6989, 13096, 10951, 12423,  // 12-17 ambienteGol
 };
-#define PISTA_DURACION_MS_MARGEN 1200UL   // margen sobre la duración medida, antes de forzar
-
 // Duración real medida, sin el margen del failsafe — para mostrar en el log
 // (transcurrido/total), no para decidir cuándo forzar.
 static uint32_t duracionPistaBase(uint8_t pista) {
@@ -44,9 +42,12 @@ static uint32_t duracionPistaBase(uint8_t pista) {
     return 0;   // pista desconocida
 }
 
+// Margen configurable (config.failsafeMargenMs, panel → Configuración técnica →
+// Pitidos, finales y ambiente): cuánto se espera sobre la duración real medida
+// antes de forzar el relanzamiento. Default 1200ms.
 static uint32_t duracionPista(uint8_t pista) {
     uint32_t base = duracionPistaBase(pista);
-    return base > 0 ? base + PISTA_DURACION_MS_MARGEN : 0;   // 0: el caller cae al failsafe genérico
+    return base > 0 ? base + config.failsafeMargenMs : 0;   // 0: el caller cae al failsafe genérico
 }
 
 // La hinchada suena como máximo esta cantidad de veces por partido (el gol que la
@@ -453,6 +454,16 @@ uint32_t ambienteGetDuracionSegs() {
 
 uint32_t ambienteGetDuracionTotalSegs() {
     return duracionPistaBase(_pistaActual) / 1000;   // 0 si la pista no está en la tabla
+}
+
+// Versiones en ms de las dos de arriba — para comparar con precisión de menos de
+// un segundo (ver ANTELACION_GOL_MS en Comentarista.cpp).
+uint32_t ambienteGetDuracionMs() {
+    return _trackStartAt > 0 ? millis() - _trackStartAt : 0;
+}
+
+uint32_t ambienteGetDuracionTotalMs() {
+    return duracionPistaBase(_pistaActual);   // 0 si la pista no está en la tabla
 }
 
 // 0x0A/0x0B (standby/normal del estándar DFPlayer Mini) se probaron acá y

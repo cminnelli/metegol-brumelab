@@ -14,5 +14,7 @@ const char* ambienteGetEstado();
 uint8_t     ambienteGetPista();
 uint32_t    ambienteGetDuracionSegs();       // hace cuánto está sonando la pista actual de SP2
 uint32_t    ambienteGetDuracionTotalSegs();  // duración total conocida de esa pista (0 si no está en la tabla)
+uint32_t    ambienteGetDuracionMs();         // igual que ambienteGetDuracionSegs(), en ms
+uint32_t    ambienteGetDuracionTotalMs();    // igual que ambienteGetDuracionTotalSegs(), en ms
 void        ambienteEntrarReposo();  // pausa + intenta bajar el chip a standby
 void        ambienteSalirReposo();   // vuelve a modo normal + restaura volumen

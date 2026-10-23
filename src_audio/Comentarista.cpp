@@ -410,10 +410,32 @@ void comentaristaLoop(const Partido& partido) {
         programarProximo();
         return;
     }
-    // Espera a que terminen: SP2 reacción gol Y SP1 comentario de gol (+ 2s margen)
-    if (strcmp(ambienteGetEstado(), "gol_reaccion") == 0 || vozIsBusy()) {
-        _proximoComentario = millis() + 2000UL;
+    // Espera a que termine SP1 (comentario de gol en curso). Reintenta cada 300ms
+    // (no 2s) — vozIsBusy() es solo leer una bandera, no cuesta consultarla
+    // seguido, y con la ventana de 1.5s antes de gol_reaccion (ver
+    // comentaristaOnGol) un reintento más lento la hacía pasar de largo.
+    if (vozIsBusy()) {
+        _proximoComentario = millis() + 300UL;
         return;
+    }
+    // Mientras suena "ambiente gol" (gol_reaccion, SP2) no se espera a que corte
+    // del todo — se deja arrancar el primer comentario normal ANTELACION_GOL_SEGS
+    // antes de que termine, así la voz tapa ese corte seco de SP2 en vez de que se
+    // note un hueco de silencio justo cuando cambia a hinchada/ambiente. Solo
+    // afecta a este PRIMER comentario post-gol — el siguiente ya sigue el
+    // intervalo random de siempre (programarProximo()).
+    if (strcmp(ambienteGetEstado(), "gol_reaccion") == 0) {
+        const uint32_t ANTELACION_GOL_MS = 1500;
+        uint32_t totalMs = ambienteGetDuracionTotalMs();
+        uint32_t transMs = ambienteGetDuracionMs();
+        // transMs + ANTELACION >= totalMs en vez de totalMs - transMs <=
+        // ANTELACION: evita underflow (son uint32_t) si ya se pasó de la duración
+        // total conocida.
+        bool faltaPoco = totalMs > 0 && (transMs + ANTELACION_GOL_MS >= totalMs);
+        if (!faltaPoco) {
+            _proximoComentario = millis() + 200UL;
+            return;
+        }
     }
     dispararComentario(partido);
     programarProximo();
@@ -436,7 +458,19 @@ void comentaristaFinalPartido(const Partido& partido) {
 void comentaristaOnGol(const Partido& partido) {
     TipoGol tg = seleccionarTipoGol(partido);
     reproducir("COMENTARIO", tg.nombre, tg.rango, 0, false);  // línea hija del bloque GOL
-    _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
+    // Apunta el próximo comentario directo a la ventana de 1.5s antes de que
+    // termine gol_reaccion (ambienteOnGol() ya la arrancó antes de esta llamada,
+    // ver main.cpp) — así queda garantizado en TODOS los goles, no solo cuando el
+    // temporizador normal ya estaba libre. Si la pista no está en la tabla
+    // (duración desconocida), cae al mínimo de siempre y que decida el chequeo de
+    // gol_reaccion en comentaristaLoop().
+    const uint32_t ANTELACION_GOL_MS = 1500;
+    uint32_t totalMs = ambienteGetDuracionTotalMs();
+    if (totalMs > ANTELACION_GOL_MS) {
+        _proximoComentario = millis() + (totalMs - ANTELACION_GOL_MS);
+    } else {
+        _proximoComentario = millis() + (uint32_t)config.intervaloComentariosMin * 1000UL;
+    }
 }
 
 const char* comentaristaGetEstado(const Partido& partido) {
