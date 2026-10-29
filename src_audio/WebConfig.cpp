@@ -21,6 +21,25 @@ static Partido* _partido = nullptr;
 #define WIFI_SSID "Makergol"
 #define WIFI_PASS "makergol123"
 
+// Escapa para HTML (texto visible Y atributos): nombreCeleste/nombreBlanco son
+// el primer campo de texto libre que se muestra como contenido de la página en
+// vez de solo como value="" de un input — sin esto, un nombre con "<" o "&"
+// rompería el HTML servido.
+static String htmlEscape(const char* s) {
+    String out;
+    for (const char* p = s; *p; p++) {
+        switch (*p) {
+            case '&':  out += "&amp;";  break;
+            case '<':  out += "&lt;";   break;
+            case '>':  out += "&gt;";   break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&#39;";  break;
+            default:   out += *p;       break;
+        }
+    }
+    return out;
+}
+
 Config config;
 static WebServer server(80);
 static DNSServer dns;
@@ -132,6 +151,8 @@ static void cargarConfig() {
     config.modoJuego       = prefs.getUChar("modoJuego", 0);
     config.golesMax        = prefs.getUChar("golesMax",    4);
     config.duracionMin     = prefs.getUShort("durMin",     5);
+    strlcpy(config.nombreCeleste, prefs.getString("nombC", "Celeste").c_str(), sizeof(config.nombreCeleste));
+    strlcpy(config.nombreBlanco,  prefs.getString("nombB", "Blanco").c_str(),  sizeof(config.nombreBlanco));
     config.brillo          = prefs.getUChar("brillo",      5);
     config.velocidadScroll = prefs.getUChar("velScroll",  40);
     config.intervaloDisplay = prefs.getUChar("iDisp",      5);
@@ -257,6 +278,8 @@ static void guardarConfig() {
     prefs.putUChar("modoJuego", config.modoJuego);
     prefs.putUChar("golesMax",  config.golesMax);
     prefs.putUShort("durMin",   config.duracionMin);
+    prefs.putString("nombC", config.nombreCeleste);
+    prefs.putString("nombB", config.nombreBlanco);
     prefs.putUChar("brillo",    config.brillo);
     prefs.putUChar("velScroll", config.velocidadScroll);
     prefs.putUChar("iDisp",     config.intervaloDisplay);
@@ -531,13 +554,13 @@ static const char HTML[] PROGMEM = R"rawhtml(
   </div>
   <div class="scoreboard">
     <div class="team c">
-      <span class="team-name">Celeste</span>
+      <span class="team-name" id="nombre-c">%NOMBRE_C%</span>
       <span class="team-score" id="sc-c">0</span>
     </div>
     <span class="score-sep">—</span>
     <div class="team b">
       <span class="team-score" id="sc-b">0</span>
-      <span class="team-name">Blanco</span>
+      <span class="team-name" id="nombre-b">%NOMBRE_B%</span>
     </div>
   </div>
   <div class="partido-meta" id="pmeta">
@@ -617,6 +640,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <label>Alternar marcador/tiempo cada <b id="id">%INTERV_DISP%</b>s</label>
         <input type="range" name="intervaloDisplay" min="2" max="30" value="%INTERV_DISP%" oninput="sl(this,'id')">
       </div>
+      <div class="field"><label>Nombre equipo celeste</label><input class="ti" type="text" name="nombreCeleste" maxlength="11" value="%NOMBRE_C%"></div>
+      <div class="field"><label>Nombre equipo blanco</label><input class="ti" type="text" name="nombreBlanco" maxlength="11" value="%NOMBRE_B%"></div>
     </div>
   </div>
 
@@ -1108,7 +1133,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
         lbl.textContent='Finalizado';
         pm.style.display='none';
         gw.style.display='block';
-        gw.textContent=g[0]>g[1]?'Ganó Celeste':g[1]>g[0]?'Ganó Blanco':'Empate';
+        gw.textContent=g[0]>g[1]?('Ganó '+document.getElementById('nombre-c').textContent):g[1]>g[0]?('Ganó '+document.getElementById('nombre-b').textContent):'Empate';
         bs.style.display='inline-block';bs.textContent='Nuevo partido';
         bp.style.display='none';brs.style.display='none';bst.style.display='none';
       }else{
@@ -1202,6 +1227,8 @@ static String buildPage() {
     html.replace("%MODO_TIEMPO_ACTIVE%", config.modoJuego == 1 ? "active" : "");
     html.replace("%GOLES_MAX%",    String(config.golesMax));
     html.replace("%DUR_MIN%",      String(config.duracionMin));
+    html.replace("%NOMBRE_C%",     htmlEscape(config.nombreCeleste));
+    html.replace("%NOMBRE_B%",     htmlEscape(config.nombreBlanco));
     html.replace("%INTERV_DISP%",  String(config.intervaloDisplay));
     html.replace("%BRILLO%",     String(config.brillo));
     html.replace("%VEL_SCROLL%", String(config.velocidadScroll));
@@ -1314,6 +1341,11 @@ static void handleSave() {
     if (server.hasArg("modoJuego"))       config.modoJuego       = server.arg("modoJuego").toInt();
     if (server.hasArg("golesMax"))        config.golesMax        = constrain(server.arg("golesMax").toInt(), 4, 10);
     if (server.hasArg("duracionMin"))     config.duracionMin     = constrain(server.arg("duracionMin").toInt(), 3, 8);
+    // Si mandan vacío no se pisa — un nombre de equipo en blanco deja el marcador sin etiqueta.
+    if (server.hasArg("nombreCeleste") && server.arg("nombreCeleste").length() > 0)
+        strlcpy(config.nombreCeleste, server.arg("nombreCeleste").c_str(), sizeof(config.nombreCeleste));
+    if (server.hasArg("nombreBlanco") && server.arg("nombreBlanco").length() > 0)
+        strlcpy(config.nombreBlanco,  server.arg("nombreBlanco").c_str(),  sizeof(config.nombreBlanco));
     if (server.hasArg("brillo")) {
         config.brillo = constrain(server.arg("brillo").toInt(), 0, 15);
         // En reposo el brillo lo maneja Reposo (queda atenuado) — este valor se

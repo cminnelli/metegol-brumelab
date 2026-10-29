@@ -17,6 +17,8 @@ struct Config {
     uint8_t  modoJuego;         // 0=goles, 1=tiempo
     uint8_t  golesMax;          // 4-10
     uint16_t duracionMin;       // 3-8 minutos
+    char     nombreCeleste[12]; // nombre del equipo celeste — default "Celeste"
+    char     nombreBlanco[12];  // nombre del equipo blanco  — default "Blanco"
 
     // Display
     uint8_t  brillo;            // 0-15
