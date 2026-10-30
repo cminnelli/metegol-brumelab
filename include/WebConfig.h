@@ -32,8 +32,6 @@ struct Config {
     char textoReanuda[20];          // al reanudar                   — "VAMOS!"
     char textoCancelado[20];        // al cancelar                   — "CANCELADO!"
     char textoGol[20];              // en cada gol                   — "Gollll!!!"
-    char textoGanadorCeleste[28];   // fin de partido, ganó celeste  — "Fin! Ganador Celeste!"
-    char textoGanadorBlanco[28];    // fin de partido, ganó blanco   — "Fin! Ganador Blanco!"
     char textoEmpate[28];           // fin de partido, empate        — "Fin! Empate!"
     char textoJugarDeNuevo[32];     // tras el ganador — "Presiona para jugar de nuevo!"
     char textoReposo[32];           // mensaje marketinero durante el reposo — "MAKERGOL - Toca para jugar!"

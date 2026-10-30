@@ -234,7 +234,7 @@ void loop() {
                     partido.registrarGol(0);
                     Serial.printf("\n──── GOL!  %d ─ %d  ──────────────────────────\n",
                         partido.goles[0], partido.goles[1]);
-                    Serial.printf("     Celeste anota!\n");
+                    Serial.printf("     %s anota!\n", config.nombreCeleste);
                     ambienteOnGol();
                     displayMarcador(partido.goles[0], partido.goles[1]);
                     comentaristaOnGol(partido);
@@ -247,8 +247,8 @@ void loop() {
                     _altUltimoCambio = millis();
                     if (partido.terminado) {
                         int8_t w = partido.ganador();
-                        Serial.printf("     → FINAL  |  %s\n",
-                            w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
+                        if (w < 0) Serial.printf("     → FINAL  |  Empate!\n");
+                        else       Serial.printf("     → FINAL  |  Ganó %s!\n", w == 0 ? config.nombreCeleste : config.nombreBlanco);
                         _finGolPendiente      = true;
                         _finGolGanador        = w;
                         _finGolPendienteDesde = millis();
@@ -268,7 +268,7 @@ void loop() {
                     partido.registrarGol(1);
                     Serial.printf("\n──── GOL!  %d ─ %d  ──────────────────────────\n",
                         partido.goles[0], partido.goles[1]);
-                    Serial.printf("     Blanco anota!\n");
+                    Serial.printf("     %s anota!\n", config.nombreBlanco);
                     ambienteOnGol();
                     displayMarcador(partido.goles[0], partido.goles[1]);
                     comentaristaOnGol(partido);
@@ -276,8 +276,8 @@ void loop() {
                     _altUltimoCambio = millis();  // ídem arriba — evita el doble scroll del marcador
                     if (partido.terminado) {
                         int8_t w = partido.ganador();
-                        Serial.printf("     → FINAL  |  %s\n",
-                            w == 0 ? "Ganó Celeste!" : w == 1 ? "Ganó Blanco!" : "Empate!");
+                        if (w < 0) Serial.printf("     → FINAL  |  Empate!\n");
+                        else       Serial.printf("     → FINAL  |  Ganó %s!\n", w == 0 ? config.nombreCeleste : config.nombreBlanco);
                         _finGolPendiente      = true;
                         _finGolGanador        = w;
                         _finGolPendienteDesde = millis();
