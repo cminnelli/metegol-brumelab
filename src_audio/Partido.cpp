@@ -37,8 +37,7 @@ int8_t Partido::ganador() const {
 void Partido::registrarGol(uint8_t equipo) {
     sumarGol(equipo);
 
-    static const char* nombres[] = {"celeste", "blanco"};
-    Serial.printf("[JUEGO] Gol %s\n", nombres[equipo]);
+    Serial.printf("[JUEGO] Gol %s\n", equipo == 0 ? config.nombreCeleste : config.nombreBlanco);
     char buf[16];
     getResultado(buf, sizeof(buf));
     Serial.printf("[JUEGO] Marcador: %s\n", buf);
@@ -49,8 +48,8 @@ void Partido::registrarGol(uint8_t equipo) {
 
     if (fin) {
         int8_t w = ganador();
-        if (w == 0)      Serial.println("[JUEGO] ¡Ganó celeste!");
-        else if (w == 1) Serial.println("[JUEGO] ¡Ganó blanco!");
+        if (w == 0)      Serial.printf("[JUEGO] ¡Ganó %s!\n", config.nombreCeleste);
+        else if (w == 1) Serial.printf("[JUEGO] ¡Ganó %s!\n", config.nombreBlanco);
         else             Serial.println("[JUEGO] ¡Empate!");
         activo    = false;
         pausado   = false;

@@ -317,9 +317,18 @@ void displayGol() {
 }
 
 void displayGanador(int8_t w) {
-    if (w == 0)      scrollSanitizado(config.textoGanadorCeleste, PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
-    else if (w == 1) scrollSanitizado(config.textoGanadorBlanco,  PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
-    else             scrollSanitizado(config.textoEmpate,         PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+    if (w == 0 || w == 1) {
+        // "Ganador <nombre>!" armado con el nombre corto configurado — antes era
+        // una frase 100% libre por equipo, pero quedaba desconectada del nombre
+        // si lo cambiabas (podía decir "Ganador Celeste!" con el equipo ya
+        // rebautizado "Rojo"). Así hay una sola fuente de verdad para el nombre,
+        // compartida con el marcador en vivo de la web.
+        char buf[24];
+        snprintf(buf, sizeof(buf), "GANADOR %s!", w == 0 ? config.nombreCeleste : config.nombreBlanco);
+        scrollSanitizado(buf, PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+    } else {
+        scrollSanitizado(config.textoEmpate, PA_CENTER, PA_SCROLL_LEFT, config.velocidadScroll);
+    }
 }
 
 void displayModo(const char* texto) {

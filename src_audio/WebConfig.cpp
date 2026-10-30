@@ -25,6 +25,18 @@ static Partido* _partido = nullptr;
 // el primer campo de texto libre que se muestra como contenido de la página en
 // vez de solo como value="" de un input — sin esto, un nombre con "<" o "&"
 // rompería el HTML servido.
+// nombreCeleste/nombreBlanco también se mandan crudos dentro de JSON (/estado,
+// sin ningún escape JSON) — se les saca comillas y backslash al guardar, en vez
+// de tener que escapar para JSON en cada lugar que los lee después.
+static void sanitizarParaJson(char* s) {
+    char* w = s;
+    for (char* r = s; *r; r++) {
+        if (*r == '"' || *r == '\\') continue;
+        *w++ = *r;
+    }
+    *w = '\0';
+}
+
 static String htmlEscape(const char* s) {
     String out;
     for (const char* p = s; *p; p++) {
@@ -165,8 +177,6 @@ static void cargarConfig() {
     strlcpy(config.textoReanuda,        prefs.getString("txtRea",  "VAMOS!").c_str(),                 sizeof(config.textoReanuda));
     strlcpy(config.textoCancelado,      prefs.getString("txtCan",  "CANCELADO!").c_str(),              sizeof(config.textoCancelado));
     strlcpy(config.textoGol,            prefs.getString("txtGol",  "Gollll!!!").c_str(),               sizeof(config.textoGol));
-    strlcpy(config.textoGanadorCeleste, prefs.getString("txtGC",   "Fin! Ganador Celeste!").c_str(),   sizeof(config.textoGanadorCeleste));
-    strlcpy(config.textoGanadorBlanco,  prefs.getString("txtGB",   "Fin! Ganador Blanco!").c_str(),    sizeof(config.textoGanadorBlanco));
     strlcpy(config.textoEmpate,         prefs.getString("txtEmp",  "Fin! Empate!").c_str(),            sizeof(config.textoEmpate));
     strlcpy(config.textoJugarDeNuevo,   prefs.getString("txtJDN",  "Presiona para jugar de nuevo!").c_str(), sizeof(config.textoJugarDeNuevo));
     strlcpy(config.textoReposo,         prefs.getString("txtReposo", "MAKERGOL - Toca para jugar!").c_str(), sizeof(config.textoReposo));
@@ -292,8 +302,6 @@ static void guardarConfig() {
     prefs.putString("txtRea",  config.textoReanuda);
     prefs.putString("txtCan",  config.textoCancelado);
     prefs.putString("txtGol",  config.textoGol);
-    prefs.putString("txtGC",   config.textoGanadorCeleste);
-    prefs.putString("txtGB",   config.textoGanadorBlanco);
     prefs.putString("txtEmp",  config.textoEmpate);
     prefs.putString("txtJDN",  config.textoJugarDeNuevo);
     prefs.putString("txtReposo", config.textoReposo);
@@ -669,9 +677,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <div class="field"><label>Al cancelar</label><input class="ti" type="text" name="txtCan" maxlength="18" value="%TXT_CAN%"></div>
       </div>
       <div id="fg-fin" class="farola-grupo" style="display:none">
-        <div class="field"><label>Ganó celeste</label><input class="ti" type="text" name="txtGC" maxlength="26" value="%TXT_GC%"></div>
-        <div class="field"><label>Ganó blanco</label><input class="ti" type="text" name="txtGB" maxlength="26" value="%TXT_GB%"></div>
         <div class="field"><label>Empate</label><input class="ti" type="text" name="txtEmp" maxlength="26" value="%TXT_EMP%"></div>
+        <p style="font-size:.72rem;color:var(--muted);line-height:1.5;margin:4px 0 0">Al ganar celeste o blanco, la farola dice "Ganador &lt;nombre del equipo&gt;!" — el nombre se edita en Reglas del partido, no acá.</p>
       </div>
       <div id="fg-otros" class="farola-grupo" style="display:none">
         <div class="field"><label>Al bootear el ESP32</label><input class="ti" type="text" name="txtBoot" maxlength="18" value="%TXT_BOOT%"></div>
@@ -1098,6 +1105,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
       const bst=document.getElementById('btn-stop');
       document.getElementById('sc-c').textContent=g[0];
       document.getElementById('sc-b').textContent=g[1];
+      if(d.nombreC)document.getElementById('nombre-c').textContent=d.nombreC;
+      if(d.nombreB)document.getElementById('nombre-b').textContent=d.nombreB;
       actualizarFabPlay(d);
       actualizarModoChip(d.modo);
       if(d.reposo){
@@ -1133,7 +1142,7 @@ static const char HTML[] PROGMEM = R"rawhtml(
         lbl.textContent='Finalizado';
         pm.style.display='none';
         gw.style.display='block';
-        gw.textContent=g[0]>g[1]?('Ganó '+document.getElementById('nombre-c').textContent):g[1]>g[0]?('Ganó '+document.getElementById('nombre-b').textContent):'Empate';
+        gw.textContent=g[0]>g[1]?('Ganó '+(d.nombreC||'Celeste')):g[1]>g[0]?('Ganó '+(d.nombreB||'Blanco')):'Empate';
         bs.style.display='inline-block';bs.textContent='Nuevo partido';
         bp.style.display='none';brs.style.display='none';bst.style.display='none';
       }else{
@@ -1239,8 +1248,6 @@ static String buildPage() {
     html.replace("%TXT_REA%",  config.textoReanuda);
     html.replace("%TXT_CAN%",  config.textoCancelado);
     html.replace("%TXT_GOL%",  config.textoGol);
-    html.replace("%TXT_GC%",   config.textoGanadorCeleste);
-    html.replace("%TXT_GB%",   config.textoGanadorBlanco);
     html.replace("%TXT_EMP%",  config.textoEmpate);
     html.replace("%TXT_JDN%",  config.textoJugarDeNuevo);
     html.replace("%TXT_REPOSO%", config.textoReposo);
@@ -1342,10 +1349,14 @@ static void handleSave() {
     if (server.hasArg("golesMax"))        config.golesMax        = constrain(server.arg("golesMax").toInt(), 4, 10);
     if (server.hasArg("duracionMin"))     config.duracionMin     = constrain(server.arg("duracionMin").toInt(), 3, 8);
     // Si mandan vacío no se pisa — un nombre de equipo en blanco deja el marcador sin etiqueta.
-    if (server.hasArg("nombreCeleste") && server.arg("nombreCeleste").length() > 0)
+    if (server.hasArg("nombreCeleste") && server.arg("nombreCeleste").length() > 0) {
         strlcpy(config.nombreCeleste, server.arg("nombreCeleste").c_str(), sizeof(config.nombreCeleste));
-    if (server.hasArg("nombreBlanco") && server.arg("nombreBlanco").length() > 0)
+        sanitizarParaJson(config.nombreCeleste);
+    }
+    if (server.hasArg("nombreBlanco") && server.arg("nombreBlanco").length() > 0) {
         strlcpy(config.nombreBlanco,  server.arg("nombreBlanco").c_str(),  sizeof(config.nombreBlanco));
+        sanitizarParaJson(config.nombreBlanco);
+    }
     if (server.hasArg("brillo")) {
         config.brillo = constrain(server.arg("brillo").toInt(), 0, 15);
         // En reposo el brillo lo maneja Reposo (queda atenuado) — este valor se
@@ -1362,8 +1373,6 @@ static void handleSave() {
     if (server.hasArg("txtRea"))  strlcpy(config.textoReanuda,        server.arg("txtRea").c_str(),  sizeof(config.textoReanuda));
     if (server.hasArg("txtCan"))  strlcpy(config.textoCancelado,      server.arg("txtCan").c_str(),  sizeof(config.textoCancelado));
     if (server.hasArg("txtGol"))  strlcpy(config.textoGol,            server.arg("txtGol").c_str(),  sizeof(config.textoGol));
-    if (server.hasArg("txtGC"))   strlcpy(config.textoGanadorCeleste, server.arg("txtGC").c_str(),   sizeof(config.textoGanadorCeleste));
-    if (server.hasArg("txtGB"))   strlcpy(config.textoGanadorBlanco,  server.arg("txtGB").c_str(),   sizeof(config.textoGanadorBlanco));
     if (server.hasArg("txtEmp"))  strlcpy(config.textoEmpate,         server.arg("txtEmp").c_str(),  sizeof(config.textoEmpate));
     if (server.hasArg("txtJDN"))  strlcpy(config.textoJugarDeNuevo,   server.arg("txtJDN").c_str(),  sizeof(config.textoJugarDeNuevo));
     if (server.hasArg("txtReposo")) strlcpy(config.textoReposo,      server.arg("txtReposo").c_str(), sizeof(config.textoReposo));
@@ -1456,7 +1465,7 @@ static void handleSave() {
 }
 
 static void handleEstado() {
-    char buf[230];
+    char buf[280];
     const char* reposo = reposoActivo() ? "true" : "false";
     if (_partido) {
         char marcador[16];
@@ -1470,9 +1479,11 @@ static void handleEstado() {
         const char* estado = comentaristaGetEstado(*_partido);
         snprintf(buf, sizeof(buf),
             "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,"
+            "\"nombreC\":\"%s\",\"nombreB\":\"%s\","
             "\"tiempoRestante\":%lu,\"tiempoJuego\":\"%s\","
             "\"estado\":\"%s\",\"activo\":%s,\"terminado\":%s,\"pausado\":%s,\"reposo\":%s}",
             _partido->goles[0], _partido->goles[1], marcador, config.modoJuego,
+            config.nombreCeleste, config.nombreBlanco,
             (unsigned long)restante, tiempo, estado,
             _partido->activo    ? "true" : "false",
             _partido->terminado ? "true" : "false",
@@ -1481,9 +1492,10 @@ static void handleEstado() {
     } else {
         snprintf(buf, sizeof(buf),
             "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,"
+            "\"nombreC\":\"%s\",\"nombreB\":\"%s\","
             "\"tiempoRestante\":0,\"tiempoJuego\":\"00:00\","
             "\"estado\":\"en_espera\",\"activo\":false,\"terminado\":false,\"pausado\":false,\"reposo\":%s}",
-            config.modoJuego, reposo);
+            config.modoJuego, config.nombreCeleste, config.nombreBlanco, reposo);
     }
     server.send(200, "application/json", buf);
 }
