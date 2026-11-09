@@ -19,6 +19,8 @@ struct Config {
     uint16_t duracionMin;       // 3-8 minutos
     char     nombreCeleste[12]; // nombre del equipo celeste — default "Celeste"
     char     nombreBlanco[12];  // nombre del equipo blanco  — default "Blanco"
+    char     colorCeleste[8];   // color del marcador web, "#rrggbb" — default "#ffffff"
+    char     colorBlanco[8];    // color del marcador web, "#rrggbb" — default "#ffffff"
 
     // Display
     uint8_t  brillo;            // 0-15

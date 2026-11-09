@@ -37,6 +37,14 @@ static void sanitizarParaJson(char* s) {
     *w = '\0';
 }
 
+// "#rrggbb" tal cual lo manda <input type="color"> — rechaza cualquier otra
+// cosa en vez de guardar un color roto que después no pinta nada en el panel.
+static bool esColorHexValido(const char* s) {
+    if (strlen(s) != 7 || s[0] != '#') return false;
+    for (int i = 1; i < 7; i++) if (!isxdigit((unsigned char)s[i])) return false;
+    return true;
+}
+
 static String htmlEscape(const char* s) {
     String out;
     for (const char* p = s; *p; p++) {
@@ -165,6 +173,8 @@ static void cargarConfig() {
     config.duracionMin     = prefs.getUShort("durMin",     5);
     strlcpy(config.nombreCeleste, prefs.getString("nombC", "Celeste").c_str(), sizeof(config.nombreCeleste));
     strlcpy(config.nombreBlanco,  prefs.getString("nombB", "Blanco").c_str(),  sizeof(config.nombreBlanco));
+    strlcpy(config.colorCeleste,  prefs.getString("colC", "#ffffff").c_str(),  sizeof(config.colorCeleste));
+    strlcpy(config.colorBlanco,   prefs.getString("colB", "#ffffff").c_str(),  sizeof(config.colorBlanco));
     config.brillo          = prefs.getUChar("brillo",      5);
     config.velocidadScroll = prefs.getUChar("velScroll",  40);
     config.intervaloDisplay = prefs.getUChar("iDisp",      5);
@@ -290,6 +300,8 @@ static void guardarConfig() {
     prefs.putUShort("durMin",   config.duracionMin);
     prefs.putString("nombC", config.nombreCeleste);
     prefs.putString("nombB", config.nombreBlanco);
+    prefs.putString("colC", config.colorCeleste);
+    prefs.putString("colB", config.colorBlanco);
     prefs.putUChar("brillo",    config.brillo);
     prefs.putUChar("velScroll", config.velocidadScroll);
     prefs.putUChar("iDisp",     config.intervaloDisplay);
@@ -431,12 +443,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
   .modo-chip { font-size: .68rem; font-weight: 600; color: var(--muted); }
   .scoreboard { display: flex; align-items: center; justify-content: center; max-width: 380px; margin: 0 auto; padding: 34px 16px 22px; gap: 0; }
   .team { flex: 1; max-width: 150px; text-align: center; }
-  .team-name { display: block; font-size: .62rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px; }
-  .team.c .team-name { color: var(--celeste); }
-  .team.b .team-name { color: var(--blanco); }
-  .team-score { display: block; font-size: 4.5rem; font-weight: 700; line-height: 1; }
-  .team.c .team-score { color: var(--celeste); }
-  .team.b .team-score { color: var(--blanco); }
+  .team-name { display: block; font-size: .62rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .team-score { display: block; font-size: 4.5rem; font-weight: 700; line-height: 1; color: #fff; }
   .score-sep { font-size: 1.4rem; color: var(--border); padding: 0 16px; font-weight: 300; line-height: 1; align-self: center; }
   .partido-meta { display: none; justify-content: center; padding: 0 20px 22px; }
   .meta-strip { display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 14px; padding: 11px 4px; width: 100%; max-width: 460px; }
@@ -562,13 +570,13 @@ static const char HTML[] PROGMEM = R"rawhtml(
   </div>
   <div class="scoreboard">
     <div class="team c">
-      <span class="team-name" id="nombre-c">%NOMBRE_C%</span>
-      <span class="team-score" id="sc-c">0</span>
+      <span class="team-name" id="nombre-c" style="color:%COLOR_C%">%NOMBRE_C%</span>
+      <span class="team-score" id="sc-c" style="color:%COLOR_C%">0</span>
     </div>
     <span class="score-sep">—</span>
     <div class="team b">
-      <span class="team-score" id="sc-b">0</span>
-      <span class="team-name" id="nombre-b">%NOMBRE_B%</span>
+      <span class="team-name" id="nombre-b" style="color:%COLOR_B%">%NOMBRE_B%</span>
+      <span class="team-score" id="sc-b" style="color:%COLOR_B%">0</span>
     </div>
   </div>
   <div class="partido-meta" id="pmeta">
@@ -648,8 +656,20 @@ static const char HTML[] PROGMEM = R"rawhtml(
         <label>Alternar marcador/tiempo cada <b id="id">%INTERV_DISP%</b>s</label>
         <input type="range" name="intervaloDisplay" min="2" max="30" value="%INTERV_DISP%" oninput="sl(this,'id')">
       </div>
-      <div class="field"><label>Nombre equipo celeste</label><input class="ti" type="text" name="nombreCeleste" maxlength="11" value="%NOMBRE_C%"></div>
-      <div class="field"><label>Nombre equipo blanco</label><input class="ti" type="text" name="nombreBlanco" maxlength="11" value="%NOMBRE_B%"></div>
+      <div class="field">
+        <label>Nombre equipo 1</label>
+        <div style="display:flex;gap:8px">
+          <input class="ti" type="text" name="nombreCeleste" maxlength="11" value="%NOMBRE_C%" style="flex:1">
+          <input type="color" name="colorCeleste" value="%COLOR_C%" title="Color en el marcador web" style="width:40px;height:36px;padding:2px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer">
+        </div>
+      </div>
+      <div class="field">
+        <label>Nombre equipo 2</label>
+        <div style="display:flex;gap:8px">
+          <input class="ti" type="text" name="nombreBlanco" maxlength="11" value="%NOMBRE_B%" style="flex:1">
+          <input type="color" name="colorBlanco" value="%COLOR_B%" title="Color en el marcador web" style="width:40px;height:36px;padding:2px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer">
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1107,6 +1127,8 @@ static const char HTML[] PROGMEM = R"rawhtml(
       document.getElementById('sc-b').textContent=g[1];
       if(d.nombreC)document.getElementById('nombre-c').textContent=d.nombreC;
       if(d.nombreB)document.getElementById('nombre-b').textContent=d.nombreB;
+      if(d.colorC){document.getElementById('nombre-c').style.color=d.colorC;document.getElementById('sc-c').style.color=d.colorC;}
+      if(d.colorB){document.getElementById('nombre-b').style.color=d.colorB;document.getElementById('sc-b').style.color=d.colorB;}
       actualizarFabPlay(d);
       actualizarModoChip(d.modo);
       if(d.reposo){
@@ -1238,6 +1260,8 @@ static String buildPage() {
     html.replace("%DUR_MIN%",      String(config.duracionMin));
     html.replace("%NOMBRE_C%",     htmlEscape(config.nombreCeleste));
     html.replace("%NOMBRE_B%",     htmlEscape(config.nombreBlanco));
+    html.replace("%COLOR_C%",      config.colorCeleste);
+    html.replace("%COLOR_B%",      config.colorBlanco);
     html.replace("%INTERV_DISP%",  String(config.intervaloDisplay));
     html.replace("%BRILLO%",     String(config.brillo));
     html.replace("%VEL_SCROLL%", String(config.velocidadScroll));
@@ -1357,6 +1381,12 @@ static void handleSave() {
         strlcpy(config.nombreBlanco,  server.arg("nombreBlanco").c_str(),  sizeof(config.nombreBlanco));
         sanitizarParaJson(config.nombreBlanco);
     }
+    if (server.hasArg("colorCeleste") && esColorHexValido(server.arg("colorCeleste").c_str())) {
+        strlcpy(config.colorCeleste, server.arg("colorCeleste").c_str(), sizeof(config.colorCeleste));
+    }
+    if (server.hasArg("colorBlanco") && esColorHexValido(server.arg("colorBlanco").c_str())) {
+        strlcpy(config.colorBlanco,  server.arg("colorBlanco").c_str(),  sizeof(config.colorBlanco));
+    }
     if (server.hasArg("brillo")) {
         config.brillo = constrain(server.arg("brillo").toInt(), 0, 15);
         // En reposo el brillo lo maneja Reposo (queda atenuado) — este valor se
@@ -1465,7 +1495,7 @@ static void handleSave() {
 }
 
 static void handleEstado() {
-    char buf[280];
+    char buf[340];
     const char* reposo = reposoActivo() ? "true" : "false";
     if (_partido) {
         char marcador[16];
@@ -1479,11 +1509,11 @@ static void handleEstado() {
         const char* estado = comentaristaGetEstado(*_partido);
         snprintf(buf, sizeof(buf),
             "{\"goles\":[%d,%d],\"marcador\":\"%s\",\"modo\":%d,"
-            "\"nombreC\":\"%s\",\"nombreB\":\"%s\","
+            "\"nombreC\":\"%s\",\"nombreB\":\"%s\",\"colorC\":\"%s\",\"colorB\":\"%s\","
             "\"tiempoRestante\":%lu,\"tiempoJuego\":\"%s\","
             "\"estado\":\"%s\",\"activo\":%s,\"terminado\":%s,\"pausado\":%s,\"reposo\":%s}",
             _partido->goles[0], _partido->goles[1], marcador, config.modoJuego,
-            config.nombreCeleste, config.nombreBlanco,
+            config.nombreCeleste, config.nombreBlanco, config.colorCeleste, config.colorBlanco,
             (unsigned long)restante, tiempo, estado,
             _partido->activo    ? "true" : "false",
             _partido->terminado ? "true" : "false",
@@ -1492,10 +1522,11 @@ static void handleEstado() {
     } else {
         snprintf(buf, sizeof(buf),
             "{\"goles\":[0,0],\"marcador\":\"0 - 0\",\"modo\":%d,"
-            "\"nombreC\":\"%s\",\"nombreB\":\"%s\","
+            "\"nombreC\":\"%s\",\"nombreB\":\"%s\",\"colorC\":\"%s\",\"colorB\":\"%s\","
             "\"tiempoRestante\":0,\"tiempoJuego\":\"00:00\","
             "\"estado\":\"en_espera\",\"activo\":false,\"terminado\":false,\"pausado\":false,\"reposo\":%s}",
-            config.modoJuego, config.nombreCeleste, config.nombreBlanco, reposo);
+            config.modoJuego, config.nombreCeleste, config.nombreBlanco,
+            config.colorCeleste, config.colorBlanco, reposo);
     }
     server.send(200, "application/json", buf);
 }
