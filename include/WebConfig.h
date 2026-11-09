@@ -103,3 +103,5 @@ void webConfigLoop();            // llamar en loop()
 
 void webConfigApagarWifi();      // reposo: apaga la radio WiFi (AP+STA) para bajar consumo real
 void webConfigReactivarWifi();   // sale de reposo: reactiva AP+STA, mDNS y el servidor
+
+void otaConfirmarValidoSiCorresponde();  // llamar al final de setup() — confirma el firmware actual (cancela el rollback automático) y anota su versión

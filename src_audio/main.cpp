@@ -198,6 +198,7 @@ void setup() {
     reposoInit();
     // Descarta cualquier ruido del encoder acumulado durante el boot
     noInterrupts(); encDelta = 0; encChanged = false; interrupts();
+    otaConfirmarValidoSiCorresponde();  // llegamos hasta acá: este firmware anda — cancela el rollback automático
     Serial.println("[2] Sistema listo");
 }
 

@@ -17,9 +17,19 @@ static Partido* _partido = nullptr;
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <Update.h>
+#include <esp_ota_ops.h>
+#include <ArduinoJson.h>
 
 #define WIFI_SSID "Makergol"
 #define WIFI_PASS "makergol123"
+
+#ifndef FW_VERSION
+#define FW_VERSION "unknown"  // normalmente lo inyecta scripts/inject_version.py desde el tag de git
+#endif
+#define OTA_REPO_API "https://api.github.com/repos/cminnelli/metegol-brumelab/releases"
 
 // Escapa para HTML (texto visible Y atributos): nombreCeleste/nombreBlanco son
 // el primer campo de texto libre que se muestra como contenido de la página en
@@ -76,6 +86,19 @@ static uint32_t _staStartMs  = 0;
 static bool     _staGaveUp   = false;
 static bool     _wifiApagada = false;   // true mientras dura el reposo — ver webConfigApagarWifi()
 static uint32_t _wifiDeleteDisconnectEn = 0;  // 0 = nada pendiente — ver /wifi-delete y webConfigLoop()
+
+// OTA — actualizaciones desde GitHub Releases. El chequeo es automático,
+// instalar/volver atrás es siempre un click manual (nunca se reinicia solo
+// sin que lo pidan).
+static Preferences otaPrefs;
+static String   _otaVersionActual = FW_VERSION;
+static String   _otaUltimaVistaTag = "";
+static bool     _otaHayNueva     = false;
+static bool     _otaCheckHecho   = false;   // true tras el primer chequeo (al conectar STA)
+static uint32_t _otaUltimoCheckMs = 0;
+static bool     _otaInstalando   = false;
+static int      _otaProgresoPct  = -1;
+static String   _otaError        = "";
 
 // El punto de acceso propio ("Makergol") queda siempre prendido junto con STA
 // (WIFI_AP_STA) — se probó apagarlo apenas STA conecta para ahorrar recursos,
@@ -156,6 +179,146 @@ static void addOrUpdateNet(const char* ssid, const char* pass) {
         strlcpy(_staPass[MAX_NETS-1], pass, sizeof(_staPass[MAX_NETS-1]));
     }
     guardarWiFiCreds();
+}
+
+// ── OTA ──────────────────────────────────────────────────────────────────────
+
+// Llamar al final de setup(). El bootloader ya marca el firmware recién
+// flasheado como "pendiente de confirmar" — si no lo confirmamos, un reset o
+// colgada antes de llegar acá hace que el bootloader vuelva solo al anterior
+// en el próximo boot (red de seguridad gratis, ya viene habilitada en este
+// framework). Una vez confirmado, también anota qué versión corre en este
+// slot — así "volver a la versión anterior" sabe a qué volver.
+void otaConfirmarValidoSiCorresponde() {
+    const esp_partition_t* actual = esp_ota_get_running_partition();
+    esp_ota_img_states_t estado;
+    if (esp_ota_get_state_partition(actual, &estado) == ESP_OK &&
+        estado == ESP_OTA_IMG_PENDING_VERIFY) {
+        esp_ota_mark_app_valid_cancel_rollback();
+        Serial.println("[OTA] Firmware confirmado como válido (rollback automático cancelado)");
+    }
+    uint8_t slot = actual->subtype - ESP_PARTITION_SUBTYPE_OTA(0);
+    otaPrefs.begin("metegol-ota", false);
+    otaPrefs.putString(slot == 0 ? "ver0" : "ver1", _otaVersionActual);
+    otaPrefs.end();
+}
+
+// Chequea /releases/latest — solo anota si hay una versión distinta a la
+// instalada, nunca descarga ni instala nada por su cuenta.
+static void otaChequearUltimaVersion() {
+    if (!WiFi.isConnected()) return;
+    WiFiClientSecure client;
+    client.setInsecure();   // sin pinnear el CA: un cert vencido sin forma de
+                             // actualizarlo después rompería el chequeo para
+                             // siempre — el riesgo real queda acotado porque
+                             // nunca se instala nada sin click manual y
+                             // Update.end() valida la imagen antes de aceptarla.
+    HTTPClient https;
+    if (!https.begin(client, String(OTA_REPO_API) + "/latest")) return;
+    https.addHeader("User-Agent", "Makergol-ESP32");
+    int code = https.GET();
+    if (code == 200) {
+        JsonDocument filter;
+        filter["tag_name"] = true;
+        JsonDocument doc;
+        if (!deserializeJson(doc, https.getStream(), DeserializationOption::Filter(filter))) {
+            char tagBuf[48];
+            strlcpy(tagBuf, doc["tag_name"] | "", sizeof(tagBuf));
+            sanitizarParaJson(tagBuf);
+            _otaUltimaVistaTag = String(tagBuf);
+            _otaHayNueva = _otaUltimaVistaTag.length() > 0 && _otaUltimaVistaTag != _otaVersionActual;
+        }
+    }
+    https.end();
+    _otaUltimoCheckMs = millis();
+}
+
+// Descarga el .bin y lo escribe al slot OTA inactivo, chunk por chunk con
+// delay(1) entre cada uno — este framework tiene el watchdog de tareas en 5s
+// con panic habilitado, y un loop de escritura sin ceder CPU lo dispara a
+// mitad de camino. Si falla la descarga o la imagen no valida, el firmware
+// actual queda intacto — recién si todo salió bien se reinicia solo.
+static void otaInstalarDesdeUrl(const String& url, const String& tag) {
+    _otaInstalando = true; _otaProgresoPct = 0; _otaError = "";
+
+    const esp_partition_t* destino = esp_ota_get_next_update_partition(NULL);
+    uint8_t slotDestino = destino->subtype - ESP_PARTITION_SUBTYPE_OTA(0);
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient https;
+    if (!https.begin(client, url)) {
+        _otaError = "no_pudo_conectar"; _otaInstalando = false; return;
+    }
+    https.addHeader("User-Agent", "Makergol-ESP32");
+    int code = https.GET();
+    if (code != 200) {
+        _otaError = "descarga_fallo"; https.end(); _otaInstalando = false; return;
+    }
+    int total = https.getSize();
+    if (total <= 0) {
+        _otaError = "tamano_desconocido"; https.end(); _otaInstalando = false; return;
+    }
+    if (!Update.begin(total)) {
+        _otaError = "sin_espacio"; https.end(); _otaInstalando = false; return;
+    }
+
+    WiFiClient* stream = https.getStreamPtr();
+    uint8_t buf[1024];
+    int leido = 0;
+    while (https.connected() && leido < total) {
+        size_t disponible = stream->available();
+        if (disponible) {
+            int n = stream->readBytes(buf, (disponible < sizeof(buf)) ? disponible : sizeof(buf));
+            if (Update.write(buf, n) != (size_t)n) { _otaError = "escritura_fallo"; break; }
+            leido += n;
+            _otaProgresoPct = (leido * 100) / total;
+        }
+        delay(1);
+    }
+    https.end();
+
+    if (leido != total) {
+        Update.abort();
+        if (_otaError.isEmpty()) _otaError = "descarga_incompleta";
+        _otaInstalando = false;
+        return;
+    }
+    if (!Update.end(true)) {
+        _otaError = "imagen_invalida";
+        _otaInstalando = false;
+        return;
+    }
+
+    otaPrefs.begin("metegol-ota", false);
+    otaPrefs.putString(slotDestino == 0 ? "ver0" : "ver1", tag);
+    otaPrefs.end();
+
+    _otaProgresoPct = 100;
+    Serial.printf("[OTA] Instalado %s — reiniciando...\n", tag.c_str());
+    delay(300);
+    ESP.restart();
+}
+
+static String otaStatusJson() {
+    const esp_partition_t* otra = esp_ota_get_next_update_partition(NULL);
+    uint8_t slotOtra = otra->subtype - ESP_PARTITION_SUBTYPE_OTA(0);
+    otaPrefs.begin("metegol-ota", true);
+    String verAnterior = otaPrefs.getString(slotOtra == 0 ? "ver0" : "ver1", "");
+    otaPrefs.end();
+    bool bloqueado = _partido && (_partido->activo || _partido->pausado);
+    String json = "{";
+    json += "\"version\":\""      + _otaVersionActual  + "\",";
+    json += "\"hayNueva\":"       + String(_otaHayNueva     ? "true" : "false") + ",";
+    json += "\"ultimaVista\":\""  + _otaUltimaVistaTag + "\",";
+    json += "\"puedeVolver\":"    + String(verAnterior.length() > 0 ? "true" : "false") + ",";
+    json += "\"versionAnterior\":\"" + verAnterior + "\",";
+    json += "\"instalando\":"     + String(_otaInstalando ? "true" : "false") + ",";
+    json += "\"progreso\":"       + String(_otaProgresoPct) + ",";
+    json += "\"error\":\""        + _otaError + "\",";
+    json += "\"bloqueado\":"      + String(bloqueado ? "true" : "false");
+    json += "}";
+    return json;
 }
 
 // ── Persistencia ─────────────────────────────────────────────────────────────
@@ -758,6 +921,31 @@ static const char HTML[] PROGMEM = R"rawhtml(
     </div>
   </div>
 
+  <div class="acc" data-acc="ota">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)">
+      <span class="acc-ico">⬆️</span>
+      <span class="acc-txt"><span class="acc-title">Actualizar firmware</span><span class="acc-sub">Bajar la última versión desde GitHub</span></span>
+      <span class="acc-chev">⌄</span>
+    </button>
+    <div class="acc-body" id="ota-card">
+      <p style="display:flex;align-items:center;gap:8px;font-size:.86rem;color:var(--text);font-weight:600;margin-bottom:2px">
+        <span id="ota-status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0"></span>
+        <span id="ota-status-txt">Versión instalada: ...</span>
+      </p>
+      <p id="ota-nueva-aviso" style="display:none;font-size:.78rem;color:var(--accent);margin:4px 0 14px 16px"></p>
+
+      <button type="button" onclick="otaBuscarAhora()" id="btn-ota-buscar" style="width:100%;padding:11px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-weight:600;font-size:.82rem;cursor:pointer;margin-bottom:10px">🔍 Buscar actualizaciones ahora</button>
+
+      <div id="ota-releases"></div>
+
+      <div id="ota-progreso" style="display:none;margin-top:14px;text-align:center">
+        <p style="font-size:.82rem;color:var(--accent)"><span class="spin">⏳</span> Instalando... <span id="ota-progreso-pct">0</span>%</p>
+      </div>
+
+      <button type="button" id="btn-ota-volver" onclick="otaVolverAtras()" style="display:none;width:100%;padding:11px;background:transparent;border:1px dashed var(--pink);border-radius:8px;color:var(--pink);font-weight:600;font-size:.8rem;cursor:pointer;margin-top:14px">↩️ Volver a la versión anterior</button>
+    </div>
+  </div>
+
   <div class="acc" data-acc="info-encoder">
     <button type="button" class="acc-head" onclick="toggleAcc(this)">
       <span class="acc-ico">🎛</span>
@@ -1083,6 +1271,82 @@ static const char HTML[] PROGMEM = R"rawhtml(
     document.getElementById('wSSID').focus();
   }
   actualizarEstadoWiFi();setInterval(actualizarEstadoWiFi,5000);
+  function otaEstadoTxt(d){
+    document.getElementById('ota-status-txt').textContent='Versión instalada: '+d.version;
+    const aviso=document.getElementById('ota-nueva-aviso');
+    if(d.hayNueva){
+      aviso.style.display='block';
+      aviso.textContent='Hay una versión nueva disponible: '+d.ultimaVista;
+      document.getElementById('ota-status-dot').style.background='var(--accent)';
+    }else{
+      aviso.style.display='none';
+      document.getElementById('ota-status-dot').style.background='var(--green)';
+    }
+    document.getElementById('btn-ota-volver').style.display=d.puedeVolver?'block':'none';
+  }
+  function actualizarEstadoOta(){
+    fetch('/ota-status').then(r=>r.json()).then(otaEstadoTxt).catch(()=>{});
+  }
+  function otaBuscarAhora(){
+    const btn=document.getElementById('btn-ota-buscar');
+    btn.textContent='Buscando...';btn.disabled=true;
+    fetch('/ota-check').then(r=>r.json()).then(d=>{
+      otaEstadoTxt(d);
+      btn.textContent='🔍 Buscar actualizaciones ahora';btn.disabled=false;
+      otaCargarReleases();
+    }).catch(()=>{btn.textContent='🔍 Buscar actualizaciones ahora';btn.disabled=false;});
+  }
+  function otaCargarReleases(){
+    const cont=document.getElementById('ota-releases');
+    cont.innerHTML='<p style="font-size:.78rem;color:var(--muted);padding:6px 0">Buscando versiones...</p>';
+    fetch('/ota-releases').then(r=>r.json()).then(d=>{
+      if(!d.ok||!d.releases||d.releases.length===0){
+        cont.innerHTML='<p style="font-size:.78rem;color:var(--muted);padding:6px 0">No se encontraron versiones para instalar.</p>';
+        return;
+      }
+      cont.innerHTML=d.releases.map((rel,i)=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--border)">
+          <span style="flex:1;min-width:0">
+            <span style="display:block;font-size:.86rem;color:var(--text);font-weight:600">${rel.tag}</span>
+            <span style="display:block;font-size:.68rem;color:var(--muted)">${(rel.fecha||'').slice(0,10)}</span>
+          </span>
+          <button onclick="otaInstalar(${i})" style="flex-shrink:0;background:var(--accent);border:none;color:#04240f;padding:7px 14px;border-radius:12px;font-size:.76rem;font-weight:700;cursor:pointer">Instalar</button>
+        </div>`).join('');
+      window._otaReleases=d.releases;
+    }).catch(()=>{cont.innerHTML='<p style="font-size:.78rem;color:var(--pink);padding:6px 0">Error buscando versiones.</p>';});
+  }
+  async function otaInstalar(idx){
+    const rel=window._otaReleases[idx];
+    if(!(await popup('¿Instalar la versión '+rel.tag+'? La mesa va a reiniciar sola al terminar.',{confirm:true,okText:'Instalar',danger:true})))return;
+    document.getElementById('ota-progreso').style.display='block';
+    fetch('/ota-install',{method:'POST',body:new URLSearchParams({url:rel.url,tag:rel.tag})}).then(r=>r.json()).then(d=>{
+      if(!d.ok){
+        document.getElementById('ota-progreso').style.display='none';
+        popup(d.error==='partido_en_curso'?'No se puede instalar: hay un partido en curso o pausado.':'No se pudo iniciar la instalación.');
+        return;
+      }
+      const t=setInterval(()=>{
+        fetch('/ota-status').then(r=>r.json()).then(e=>{
+          document.getElementById('ota-progreso-pct').textContent=e.progreso>=0?e.progreso:0;
+          if(!e.instalando){
+            clearInterval(t);
+            if(e.error){
+              document.getElementById('ota-progreso').style.display='none';
+              popup('La instalación falló ('+e.error+'). El firmware actual sigue andando sin cambios.');
+            }
+            // si salió bien, el equipo ya se reinició solo y este polling empieza a fallar — normal
+          }
+        }).catch(()=>{clearInterval(t);});
+      },1000);
+    }).catch(()=>{document.getElementById('ota-progreso').style.display='none';popup('Error de red.');});
+  }
+  async function otaVolverAtras(){
+    if(!(await popup('¿Volver a la versión anterior? La mesa va a reiniciar.',{confirm:true,okText:'Volver',danger:true})))return;
+    fetch('/ota-rollback',{method:'POST'}).then(r=>r.json()).then(d=>{
+      if(!d.ok)popup(d.error==='partido_en_curso'?'No se puede: hay un partido en curso o pausado.':'No se pudo volver atrás.');
+    }).catch(()=>{});
+  }
+  actualizarEstadoOta();setInterval(actualizarEstadoOta,15000);
   const EC={
     inicio:'Inicio',primeros_min:'Primeros min.',parejo:'Parejo',
     caliente:'Caliente 🔥',goleada:'Goleada 💥',definido:'Definido',
@@ -1813,6 +2077,110 @@ void webConfigInit(Partido* p) {
         reposoForzarAhora();   // recién después de mandar la respuesta — esto apaga el wifi
     });
 
+    server.on("/ota-status", HTTP_GET, [](){
+        server.send(200, "application/json", otaStatusJson());
+    });
+
+    server.on("/ota-check", HTTP_GET, [](){
+        otaChequearUltimaVersion();
+        server.send(200, "application/json", otaStatusJson());
+    });
+
+    server.on("/ota-releases", HTTP_GET, [](){
+        if (!WiFi.isConnected()) {
+            server.send(200, "application/json", "{\"ok\":false,\"error\":\"sin_internet\"}");
+            return;
+        }
+        WiFiClientSecure client;
+        client.setInsecure();
+        HTTPClient https;
+        if (!https.begin(client, String(OTA_REPO_API) + "?per_page=10")) {
+            server.send(200, "application/json", "{\"ok\":false,\"error\":\"no_pudo_conectar\"}");
+            return;
+        }
+        https.addHeader("User-Agent", "Makergol-ESP32");
+        int code = https.GET();
+        if (code != 200) {
+            https.end();
+            server.send(200, "application/json", "{\"ok\":false,\"error\":\"github_error\"}");
+            return;
+        }
+        JsonDocument filter;
+        filter[0]["tag_name"]     = true;
+        filter[0]["published_at"] = true;
+        filter[0]["assets"][0]["name"] = true;
+        filter[0]["assets"][0]["browser_download_url"] = true;
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, https.getStream(), DeserializationOption::Filter(filter));
+        https.end();
+        if (err) {
+            server.send(200, "application/json", "{\"ok\":false,\"error\":\"parse\"}");
+            return;
+        }
+        String json = "{\"ok\":true,\"releases\":[";
+        bool first = true;
+        for (JsonObject rel : doc.as<JsonArray>()) {
+            String binUrl;
+            for (JsonObject asset : rel["assets"].as<JsonArray>()) {
+                String nombre = asset["name"] | "";
+                if (nombre.endsWith(".bin")) { binUrl = asset["browser_download_url"] | ""; break; }
+            }
+            if (binUrl.isEmpty()) continue;  // release sin .bin adjunto — no se puede instalar
+            char tagBuf[48];
+            strlcpy(tagBuf, rel["tag_name"] | "", sizeof(tagBuf));
+            sanitizarParaJson(tagBuf);
+            if (!first) json += ",";
+            first = false;
+            json += "{\"tag\":\"" + String(tagBuf) + "\",";
+            json += "\"fecha\":\"" + String((const char*)(rel["published_at"] | "")) + "\",";
+            json += "\"url\":\"" + binUrl + "\"}";
+        }
+        json += "]}";
+        server.send(200, "application/json", json);
+    });
+
+    server.on("/ota-install", HTTP_POST, [](){
+        if (_partido && (_partido->activo || _partido->pausado)) {
+            server.send(409, "application/json", "{\"ok\":false,\"error\":\"partido_en_curso\"}");
+            return;
+        }
+        if (_otaInstalando) {
+            server.send(409, "application/json", "{\"ok\":false,\"error\":\"ya_instalando\"}");
+            return;
+        }
+        if (!server.hasArg("url") || !server.hasArg("tag")) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"faltan_parametros\"}");
+            return;
+        }
+        String url = server.arg("url");
+        String tag = server.arg("tag");
+        server.send(200, "application/json", "{\"ok\":true}");
+        otaInstalarDesdeUrl(url, tag);   // bloqueante — si sale bien, reinicia solo al final
+    });
+
+    server.on("/ota-rollback", HTTP_POST, [](){
+        if (_partido && (_partido->activo || _partido->pausado)) {
+            server.send(409, "application/json", "{\"ok\":false,\"error\":\"partido_en_curso\"}");
+            return;
+        }
+        const esp_partition_t* otra = esp_ota_get_next_update_partition(NULL);
+        uint8_t slotOtra = otra->subtype - ESP_PARTITION_SUBTYPE_OTA(0);
+        otaPrefs.begin("metegol-ota", true);
+        String verAnterior = otaPrefs.getString(slotOtra == 0 ? "ver0" : "ver1", "");
+        otaPrefs.end();
+        if (verAnterior.isEmpty()) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"nada_para_volver\"}");
+            return;
+        }
+        if (esp_ota_set_boot_partition(otra) != ESP_OK) {
+            server.send(500, "application/json", "{\"ok\":false,\"error\":\"no_se_pudo\"}");
+            return;
+        }
+        server.send(200, "application/json", "{\"ok\":true}");
+        delay(300);
+        ESP.restart();
+    });
+
     // Android: espera 204 para confirmar internet
     server.on("/generate_204", HTTP_GET, [](){
         server.sendHeader("Location", "http://192.168.4.1/");
@@ -1914,6 +2282,17 @@ void webConfigLoop() {
         _staStartMs   = millis();
         Serial.println("\n[WiFi] STA desconectado — reintentando redes...");
         if (_nNets > 0) WiFi.begin(_staSSID[0], _staPass[0]);
+    }
+
+    // OTA — chequeo automático: una vez al conectar, y después cada 6h.
+    // Nunca instala sola, y se salta mientras hay un partido en curso/pausado
+    // para no competir por CPU/wifi con el juego.
+    static const uint32_t OTA_CHECK_INTERVALO_MS = 6UL * 60 * 60 * 1000;
+    bool otaTocaChequear = WiFi.isConnected() && !_otaInstalando &&
+        (!_otaCheckHecho || millis() - _otaUltimoCheckMs > OTA_CHECK_INTERVALO_MS);
+    if (otaTocaChequear && !(_partido && (_partido->activo || _partido->pausado))) {
+        _otaCheckHecho = true;
+        otaChequearUltimaVersion();
     }
 }
 
